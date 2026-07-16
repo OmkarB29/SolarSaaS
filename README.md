@@ -316,8 +316,8 @@ This project demonstrates practical experience with:
 
 **Omkar Birajdar**
 
-* GitHub: https://github.com/your-username
-* LinkedIn: https://linkedin.com/in/your-linkedin
+* GitHub: https://github.com/OmkarB29
+* LinkedIn: https://linkedin.com/in/omkar-birajdar-779a5a298
 
 ---
 
