@@ -11,7 +11,7 @@ import {
 
 const Sidebar = () => {
   const navItems = [
-    { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
+    { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
     { to: '/map', icon: <MapIcon size={20} />, label: 'Map Selection' },
     { to: '/analysis', icon: <BarChart3 size={20} />, label: 'Analysis' },
     { to: '/reports', icon: <FileText size={20} />, label: 'Reports' },

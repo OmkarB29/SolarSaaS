@@ -11,17 +11,38 @@ import {
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer 
+  Tooltip
 } from 'recharts';
+import { Card, CardHeader, CardContent } from '../components/ui/Card';
+import { ChartContainer } from '../components/ui/Chart';
+import { Table } from '../components/ui/Table';
 
 const generationData = [
-  { month: 'J', expected: 400 },
-  { month: 'F', expected: 300 },
-  { month: 'M', expected: 550 },
-  { month: 'A', expected: 700 },
-  { month: 'M', expected: 850 },
-  { month: 'J', expected: 900 },
+  { month: 'January', expected: 400 },
+  { month: 'February', expected: 300 },
+  { month: 'March', expected: 550 },
+  { month: 'April', expected: 700 },
+  { month: 'May', expected: 850 },
+  { month: 'June', expected: 900 },
+];
+
+const tableColumns = [
+  { header: 'Month', accessorKey: 'month' },
+  { 
+    header: 'Expected Output (kWh)', 
+    accessorKey: 'expected',
+    cell: (row) => <span className="font-medium text-slate-900">{row.expected}</span>
+  },
+  { 
+    header: 'Performance Rating', 
+    cell: (row) => (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+        row.expected >= 700 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+      }`}>
+        {row.expected >= 700 ? 'Optimal' : 'Standard'}
+      </span>
+    )
+  }
 ];
 
 const Reports = () => {
@@ -45,8 +66,8 @@ const Reports = () => {
         </button>
       </div>
 
-      {/* A4 Document Preview styling */}
-      <div className="bg-white mx-auto shadow-2xl rounded-sm border border-slate-200 print:shadow-none print:border-none print:m-0">
+      {/* A4 Document Preview styling using Card */}
+      <Card className="rounded-sm shadow-2xl p-0 print:shadow-none print:border-none print:m-0 mx-auto">
         
         {/* Report Header */}
         <div className="bg-slate-900 text-white p-8 rounded-t-sm print:rounded-none">
@@ -87,7 +108,7 @@ const Reports = () => {
         </div>
 
         {/* Report Body */}
-        <div className="p-8 space-y-8">
+        <CardContent className="p-8 space-y-8">
           
           <div className="grid grid-cols-2 gap-8 items-start">
             <div>
@@ -125,21 +146,27 @@ const Reports = () => {
 
           <div>
             <h3 className="text-lg font-bold text-slate-800 border-b border-slate-200 pb-2 mb-6">Energy Generation Profile (First 6 Mos)</h3>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={generationData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#64748B'}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748B'}} />
-                  <Bar dataKey="expected" fill="#0f172a" radius={[4, 4, 0, 0]} barSize={40} />
-                </BarChart>
-              </ResponsiveContainer>
+            <ChartContainer height="h-56">
+              <BarChart data={generationData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#64748B'}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748B'}} />
+                <Tooltip cursor={{fill: '#F1F5F9'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                <Bar dataKey="expected" fill="#0f172a" radius={[4, 4, 0, 0]} barSize={40} />
+              </BarChart>
+            </ChartContainer>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Detailed Breakdown</h3>
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <Table columns={tableColumns} data={generationData} />
             </div>
           </div>
 
-        </div>
+        </CardContent>
 
-      </div>
+      </Card>
     </div>
   );
 };

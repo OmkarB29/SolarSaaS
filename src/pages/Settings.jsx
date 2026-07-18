@@ -7,6 +7,7 @@ import {
   Wallet,
   Globe
 } from 'lucide-react';
+import { Card } from '../components/ui/Card';
 
 const Settings = () => {
   return (
@@ -21,7 +22,7 @@ const Settings = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col md:flex-row min-h-[500px]">
+      <Card className="p-0 overflow-hidden flex flex-col md:flex-row min-h-[500px]">
         {/* Settings Navigation */}
         <div className="w-full md:w-64 bg-slate-50/50 border-b md:border-b-0 md:border-r border-slate-200 p-6 space-y-1">
           <button className="w-full flex items-center space-x-3 px-4 py-3 bg-white text-primary-600 font-medium rounded-xl shadow-sm border border-slate-200 transition-all">
@@ -126,7 +127,7 @@ const Settings = () => {
           </div>
 
         </div>
-      </div>
+      </Card>
     </div>
   );
 };
