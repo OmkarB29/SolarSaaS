@@ -64,7 +64,7 @@ The platform combines modern web technologies with intelligent calculation algor
 
 ## Backend
 
-* Java 21
+* Java 25
 * Spring Boot
 * Spring Security
 * Spring Data JPA
