@@ -27,23 +27,27 @@ const Login = () => {
     setErrors((current) => ({ ...current, [field]: '' }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const nextErrors = {};
 
     if (!form.email.trim()) nextErrors.email = 'Email is required.';
     else if (!validateEmail(form.email)) nextErrors.email = 'Enter a valid email address.';
     if (!form.password) nextErrors.password = 'Password is required.';
-    else if (form.password.length < 6) nextErrors.password = 'Password must be at least 6 characters.';
+    else if (form.password.length < 8) nextErrors.password = 'Password must be at least 8 characters.';
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
     setIsSubmitting(true);
-    window.setTimeout(() => {
-      login({ email: form.email.trim(), remember: form.remember });
+    try {
+      await login({ email: form.email.trim(), password: form.password, remember: form.remember });
       navigate(redirectTo, { replace: true });
-    }, 550);
+    } catch (error) {
+      setErrors({ form: error.message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -95,6 +99,7 @@ const Login = () => {
           {isSubmitting ? 'Signing in...' : 'Login'}
           {!isSubmitting && <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />}
         </button>
+        {errors.form && <p className="text-sm text-red-500">{errors.form}</p>}
       </form>
 
       <div className="my-6 flex items-center gap-4">

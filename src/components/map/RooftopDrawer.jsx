@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
@@ -11,9 +11,11 @@ const getPolygonCoordinates = (layer) => {
 
 const RooftopDrawer = ({ polygonCoordinates, onPolygonChange, isDrawingEnabled }) => {
   const map = useMap();
+  const drawnItemsRef = useRef(null);
 
   useEffect(() => {
     const drawnItems = new L.FeatureGroup();
+    drawnItemsRef.current = drawnItems;
     map.addLayer(drawnItems);
 
     const drawControl = new L.Control.Draw({
@@ -69,6 +71,7 @@ const RooftopDrawer = ({ polygonCoordinates, onPolygonChange, isDrawingEnabled }
       map.off(L.Draw.Event.DELETED, handleDeleted);
       map.removeControl(drawControl);
       map.removeLayer(drawnItems);
+      drawnItemsRef.current = null;
     };
   }, [map, onPolygonChange]);
 
@@ -80,6 +83,11 @@ const RooftopDrawer = ({ polygonCoordinates, onPolygonChange, isDrawingEnabled }
   }, [isDrawingEnabled]);
 
   useEffect(() => {
+    if (!polygonCoordinates.length) {
+      drawnItemsRef.current?.clearLayers();
+      return;
+    }
+
     if (polygonCoordinates.length >= 3) {
       const bounds = L.latLngBounds(polygonCoordinates);
       map.fitBounds(bounds, { padding: [24, 24], maxZoom: 20 });

@@ -1,11 +1,34 @@
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 
+const parseCoordinateQuery = (query) => {
+  const match = query.match(/^\s*(-?\d+(?:\.\d+)?)\s*(?:,|\s)\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!match) return null;
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+
+  if (Number.isNaN(lat) || Number.isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return null;
+  }
+
+  return [lat, lng];
+};
+
 export const geocodingService = {
   async searchLocation(query) {
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) {
       throw new Error('Enter a city, address, or building name.');
+    }
+
+    const coordinatePosition = parseCoordinateQuery(trimmedQuery);
+    if (coordinatePosition) {
+      return {
+        label: `${coordinatePosition[0].toFixed(6)}, ${coordinatePosition[1].toFixed(6)}`,
+        position: coordinatePosition,
+        bounds: null,
+      };
     }
 
     const params = new URLSearchParams({

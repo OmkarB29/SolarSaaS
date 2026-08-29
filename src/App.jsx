@@ -6,6 +6,7 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import MapSelection from './pages/MapSelection';
 import Analysis from './pages/Analysis';
+import AnalysisHistory from './pages/AnalysisHistory';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -25,6 +26,7 @@ function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="map" element={<MapSelection />} />
               <Route path="analysis" element={<Analysis />} />
+              <Route path="analysis-history" element={<AnalysisHistory />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
             </Route>

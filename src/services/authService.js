@@ -1,12 +1,32 @@
 const AUTH_KEY = 'solarscope.auth';
 const SESSION_KEY = 'solarscope.session';
-const USERS_KEY = 'solarscope.users';
 
-const fallbackUser = {
-  id: 'demo-user',
-  fullName: 'Alice Johnson',
-  email: 'alice@solarscope.io',
-  role: 'Energy Analyst',
+const requestJson = async (url, options) => {
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    let message = 'Authentication request failed.';
+    try {
+      const body = await response.json();
+      if (Array.isArray(body.fieldErrors) && body.fieldErrors.length > 0) {
+        message = body.fieldErrors.map((error) => `${error.field}: ${error.message}`).join(', ');
+      } else {
+        message = body.message || message;
+      }
+    } catch {
+      // Keep the default message for non-JSON responses.
+    }
+    throw new Error(message);
+  }
+
+  if (response.status === 204) return null;
+  return response.json();
 };
 
 const readJson = (storage, key, fallback) => {
@@ -24,14 +44,36 @@ const writeJson = (storage, key, value) => {
 
 export const authService = {
   getStoredAuth() {
-    return readJson(localStorage, AUTH_KEY, null) || readJson(sessionStorage, SESSION_KEY, null);
+    const storedAuth = readJson(localStorage, AUTH_KEY, null) || readJson(sessionStorage, SESSION_KEY, null);
+
+    if (storedAuth && !storedAuth.token) {
+      this.logout();
+      return null;
+    }
+
+    return storedAuth;
   },
 
-  login({ email, remember }) {
-    const users = readJson(localStorage, USERS_KEY, []);
-    const existingUser = users.find((user) => user.email.toLowerCase() === email.toLowerCase());
-    const user = existingUser || { ...fallbackUser, email };
-    const authPayload = { user, authenticatedAt: new Date().toISOString() };
+  async login({ email, password, remember }) {
+    const loginResponse = await requestJson('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!loginResponse.token) {
+      throw new Error('Login did not return an authentication token.');
+    }
+
+    const authPayload = {
+      user: {
+        fullName: email.split('@')[0],
+        email,
+        role: 'Energy Analyst',
+      },
+      token: loginResponse.token,
+      type: loginResponse.type || 'Bearer',
+      authenticatedAt: new Date().toISOString(),
+    };
 
     sessionStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(AUTH_KEY);
@@ -40,22 +82,31 @@ export const authService = {
     return authPayload;
   },
 
-  signup({ fullName, email }) {
-    const users = readJson(localStorage, USERS_KEY, []);
-    const user = {
-      id: globalThis.crypto?.randomUUID?.() || `user-${Date.now()}`,
-      fullName,
-      email,
-      role: 'Energy Analyst',
+  async signup({ fullName, email, password }) {
+    await requestJson('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name: fullName, email, password }),
+    });
+    const loginResponse = await requestJson('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!loginResponse.token) {
+      throw new Error('Signup did not return an authentication token.');
+    }
+
+    const authPayload = {
+      user: {
+        fullName,
+        email,
+        role: 'Energy Analyst',
+      },
+      token: loginResponse.token,
+      type: loginResponse.type || 'Bearer',
+      authenticatedAt: new Date().toISOString(),
     };
 
-    const nextUsers = [
-      ...users.filter((storedUser) => storedUser.email.toLowerCase() !== email.toLowerCase()),
-      user,
-    ];
-    const authPayload = { user, authenticatedAt: new Date().toISOString() };
-
-    writeJson(localStorage, USERS_KEY, nextUsers);
     writeJson(localStorage, AUTH_KEY, authPayload);
     sessionStorage.removeItem(SESSION_KEY);
 

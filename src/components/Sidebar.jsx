@@ -4,6 +4,7 @@ import {
   LayoutDashboard, 
   Map as MapIcon, 
   BarChart3, 
+  History,
   FileText, 
   Settings,
   Sun
@@ -14,6 +15,7 @@ const Sidebar = () => {
     { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
     { to: '/map', icon: <MapIcon size={20} />, label: 'Map Selection' },
     { to: '/analysis', icon: <BarChart3 size={20} />, label: 'Analysis' },
+    { to: '/analysis-history', icon: <History size={20} />, label: 'History' },
     { to: '/reports', icon: <FileText size={20} />, label: 'Reports' },
     { to: '/settings', icon: <Settings size={20} />, label: 'Settings' },
   ];

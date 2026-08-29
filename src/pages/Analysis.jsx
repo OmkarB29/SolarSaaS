@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Sun,
   Layers,
@@ -18,6 +18,8 @@ import {
 } from 'recharts';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
+import { reportApiService } from '../services/reportApiService';
+import { getLatestAnalysis } from '../services/reportService';
 
 const profitData = Array.from({ length: 20 }, (_, i) => ({
   year: `Year ${i + 1}`,
@@ -26,6 +28,48 @@ const profitData = Array.from({ length: 20 }, (_, i) => ({
 
 const Analysis = () => {
   const panelGrid = Array.from({ length: 48 }, (_, i) => i); // mock 48 panels
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const handleSaveProposal = async () => {
+    setIsSaving(true);
+    setSaveError('');
+    setSaveSuccess(false);
+
+    try {
+      const analysis = getLatestAnalysis();
+      if (!analysis) {
+        setSaveError('No analysis data available. Please complete a solar analysis first.');
+        return;
+      }
+
+      // Generate a unique report name
+      const reportName = `Solar Analysis - ${analysis.locationName || 'Unknown Location'} - ${new Date().toLocaleDateString()}`;
+      
+      // Generate the PDF (this will download it)
+      const { downloadAnalysisReport } = await import('../services/reportService');
+      downloadAnalysisReport(analysis);
+
+      // Save report metadata to backend
+      const reportData = {
+        reportName: reportName,
+        reportType: 'PDF',
+        analysisId: analysis.id,
+        filePath: `/reports/${reportName.replace(/\s+/g, '_')}.pdf`
+      };
+
+      await reportApiService.saveReport(reportData);
+      setSaveSuccess(true);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      setSaveError(error.message || 'Failed to save report. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -34,9 +78,27 @@ const Analysis = () => {
           <h1 className="text-2xl font-bold text-slate-900">System Analysis & Financials</h1>
           <p className="text-slate-500 mt-1">Detailed performance and economic projections</p>
         </div>
-        <button className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30">
-          Save Proposal
-        </button>
+        <div className="flex items-center gap-3">
+          {saveSuccess && (
+            <div className="text-green-600 text-sm font-medium flex items-center gap-1">
+              <CheckCircle2 size={16} />
+              Report saved successfully!
+            </div>
+          )}
+          {saveError && (
+            <div className="text-red-600 text-sm font-medium flex items-center gap-1">
+              <AlertCircle size={16} />
+              {saveError}
+            </div>
+          )}
+          <button 
+            onClick={handleSaveProposal}
+            disabled={isSaving}
+            className="bg-primary-500 hover:bg-primary-600 disabled:bg-primary-300 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30 disabled:cursor-not-allowed"
+          >
+            {isSaving ? 'Saving...' : 'Save Proposal'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
