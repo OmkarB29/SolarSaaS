@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { FileDown, Trash2, MapPin, CalendarDays } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { FileDown, Trash2, MapPin, CalendarDays, FileText, ArrowRight } from 'lucide-react';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Table } from '../components/ui/Table';
 import { reportApiService } from '../services/reportApiService';
@@ -142,7 +143,30 @@ const Reports = () => {
         ) : reports.length ? (
           <Table columns={columns} data={reports} />
         ) : (
-          <div className="px-6 pb-6 text-sm text-slate-500">No saved reports yet.</div>
+          <div className="flex flex-col items-center justify-center p-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
+              <FileText size={24} />
+            </div>
+            <h3 className="text-base font-semibold text-slate-800 mb-1">No Saved Reports Found</h3>
+            <p className="text-sm text-slate-500 max-w-md mb-6">
+              Reports are generated automatically when you complete rooftop analyses or click "Save Proposal" on an analysis.
+            </p>
+            <div className="flex gap-3">
+              <Link
+                to="/map"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 transition-all"
+              >
+                <span>Run Analysis on Map</span>
+                <ArrowRight size={16} />
+              </Link>
+              <Link
+                to="/analysis"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+              >
+                <span>View System Analysis</span>
+              </Link>
+            </div>
+          </div>
         )}
       </Card>
     </div>

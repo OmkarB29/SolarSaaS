@@ -5,6 +5,7 @@ import AnalysisResults from '../components/map/AnalysisResults';
 import InteractiveMap from '../components/map/InteractiveMap';
 import SearchLocation from '../components/map/SearchLocation';
 import { analysisApiService } from '../services/analysisApiService';
+import { reportApiService } from '../services/reportApiService';
 import { geocodingService } from '../services/geocodingService';
 import { weatherApiService } from '../services/weatherApiService';
 import { applyWeatherAdjustment, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
@@ -183,7 +184,19 @@ const MapSelection = () => {
         paybackPeriod: results.paybackPeriod,
       });
       localStorage.setItem('latestAnalysis', JSON.stringify({ ...latestAnalysis, id: savedAnalysis.id }));
-      setSaveFeedback({ type: 'success', message: 'Analysis saved to database & history successfully!' });
+
+      try {
+        await reportApiService.saveReport({
+          reportName: `Solar Feasibility - ${markerLabel || 'Rooftop Site'}`,
+          reportType: 'PDF',
+          analysisId: savedAnalysis.id,
+          filePath: `/reports/solar_feasibility_${savedAnalysis.id}.pdf`,
+        });
+      } catch {
+        // Non-blocking if report save fails
+      }
+
+      setSaveFeedback({ type: 'success', message: 'Analysis & Report saved to database successfully!' });
     } catch (saveError) {
       setSaveFeedback({ 
         type: 'warning', 

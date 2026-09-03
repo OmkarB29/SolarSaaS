@@ -2,6 +2,8 @@ package com.mpc.config;
 
 import com.mpc.analysis.domain.Analysis;
 import com.mpc.analysis.repository.AnalysisRepository;
+import com.mpc.report.domain.Report;
+import com.mpc.report.repository.ReportRepository;
 import com.mpc.user.domain.User;
 import com.mpc.user.repository.UserRepository;
 import org.slf4j.Logger;
@@ -10,6 +12,8 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+
 @Component
 public class DataInitializer implements CommandLineRunner {
 
@@ -17,13 +21,16 @@ public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final AnalysisRepository analysisRepository;
+    private final ReportRepository reportRepository;
     private final PasswordEncoder passwordEncoder;
 
     public DataInitializer(UserRepository userRepository,
                            AnalysisRepository analysisRepository,
+                           ReportRepository reportRepository,
                            PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.analysisRepository = analysisRepository;
+        this.reportRepository = reportRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -51,9 +58,9 @@ public class DataInitializer implements CommandLineRunner {
             return userRepository.save(newUser);
         });
 
-        // Seed sample analysis if none exist
+        // Seed sample analysis and reports if none exist
         if (analysisRepository.count() == 0) {
-            log.info("Seeding sample solar analyses...");
+            log.info("Seeding sample solar analyses and reports...");
             Analysis analysis1 = new Analysis();
             analysis1.setUser(admin);
             analysis1.setLocationName("Shivaji Nagar, Pune, Maharashtra");
@@ -70,7 +77,16 @@ public class DataInitializer implements CommandLineRunner {
             analysis1.setRoi(30.8);
             analysis1.setPaybackPeriod(3.2);
             analysis1.setCo2Reduction(18200.0);
-            analysisRepository.save(analysis1);
+            Analysis savedAnalysis1 = analysisRepository.save(analysis1);
+
+            Report report1 = new Report();
+            report1.setUser(admin);
+            report1.setAnalysis(savedAnalysis1);
+            report1.setReportName("Solar Feasibility - Shivaji Nagar");
+            report1.setReportType("PDF");
+            report1.setFilePath("/reports/solar_feasibility_shivaji_nagar.pdf");
+            report1.setGeneratedAt(Instant.now());
+            reportRepository.save(report1);
 
             Analysis analysis2 = new Analysis();
             analysis2.setUser(demoUser);
@@ -88,7 +104,16 @@ public class DataInitializer implements CommandLineRunner {
             analysis2.setRoi(31.0);
             analysis2.setPaybackPeriod(3.2);
             analysis2.setCo2Reduction(12200.0);
-            analysisRepository.save(analysis2);
+            Analysis savedAnalysis2 = analysisRepository.save(analysis2);
+
+            Report report2 = new Report();
+            report2.setUser(demoUser);
+            report2.setAnalysis(savedAnalysis2);
+            report2.setReportName("Solar Feasibility - Kothrud");
+            report2.setReportType("PDF");
+            report2.setFilePath("/reports/solar_feasibility_kothrud.pdf");
+            report2.setGeneratedAt(Instant.now());
+            reportRepository.save(report2);
             log.info("Sample data initialization complete.");
         }
     }

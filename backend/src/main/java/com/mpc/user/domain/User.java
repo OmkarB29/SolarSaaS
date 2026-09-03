@@ -41,7 +41,8 @@ public class User {
     @Column(nullable = false, length = 50)
     private String role = "ROLE_USER";
 
-    @OneToMany(mappedBy = "user")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
     private List<Report> reports = new ArrayList<>();
 
     public User() {

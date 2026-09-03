@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, MapPin } from 'lucide-react';
+import { Eye, MapPin, FileDown } from 'lucide-react';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Table } from '../components/ui/Table';
 import { analysisApiService } from '../services/analysisApiService';
+import { reportApiService } from '../services/reportApiService';
+import { downloadAnalysisReport } from '../services/reportService';
 
 const formatNumber = (value, digits = 0) =>
   new Intl.NumberFormat('en-IN', {
@@ -22,6 +24,7 @@ const AnalysisHistory = () => {
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewingId, setViewingId] = useState(null);
+  const [generatingReportId, setGeneratingReportId] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -61,6 +64,28 @@ const AnalysisHistory = () => {
     }
   };
 
+  const handleGenerateReport = async (analysis) => {
+    setGeneratingReportId(analysis.id);
+    setError('');
+
+    try {
+      // Trigger PDF download
+      downloadAnalysisReport(analysis);
+
+      // Save report record to backend
+      await reportApiService.saveReport({
+        reportName: `Solar Feasibility - ${analysis.locationName || 'Rooftop'}`,
+        reportType: 'PDF',
+        analysisId: analysis.id,
+        filePath: `/reports/solar_feasibility_${analysis.id}.pdf`,
+      });
+    } catch (reportError) {
+      setError(reportError.message || 'Failed to save report to backend');
+    } finally {
+      setGeneratingReportId(null);
+    }
+  };
+
   const columns = [
     {
       header: 'Location',
@@ -88,17 +113,29 @@ const AnalysisHistory = () => {
       cell: (row) => formatDate(row.createdAt),
     },
     {
-      header: '',
+      header: 'Actions',
       cell: (row) => (
-        <button
-          type="button"
-          onClick={() => handleViewAnalysis(row.id)}
-          disabled={viewingId === row.id}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <Eye size={16} />
-          {viewingId === row.id ? 'Loading' : 'View'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleViewAnalysis(row.id)}
+            disabled={viewingId === row.id}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Eye size={14} />
+            {viewingId === row.id ? 'Loading' : 'View'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGenerateReport(row)}
+            disabled={generatingReportId === row.id}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
+            title="Download PDF and save to Reports"
+          >
+            <FileDown size={14} />
+            {generatingReportId === row.id ? 'Generating' : 'Report'}
+          </button>
+        </div>
       ),
     },
   ];
@@ -129,16 +166,27 @@ const AnalysisHistory = () => {
 
       {selectedAnalysis && (
         <Card>
-          <div className="mb-5 flex items-start gap-3">
-            <div className="rounded-xl bg-primary-50 p-3 text-primary-600">
-              <MapPin size={20} />
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-primary-50 p-3 text-primary-600">
+                <MapPin size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">{selectedAnalysis.locationName}</h2>
+                <p className="text-sm text-slate-500">
+                  {selectedAnalysis.latitude.toFixed(5)}, {selectedAnalysis.longitude.toFixed(5)}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">{selectedAnalysis.locationName}</h2>
-              <p className="text-sm text-slate-500">
-                {selectedAnalysis.latitude.toFixed(5)}, {selectedAnalysis.longitude.toFixed(5)}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleGenerateReport(selectedAnalysis)}
+              disabled={generatingReportId === selectedAnalysis.id}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-70 transition-all"
+            >
+              <FileDown size={16} />
+              <span>{generatingReportId === selectedAnalysis.id ? 'Generating...' : 'Download PDF & Save Report'}</span>
+            </button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">

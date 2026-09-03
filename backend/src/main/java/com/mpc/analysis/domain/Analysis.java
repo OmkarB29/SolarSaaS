@@ -26,6 +26,10 @@ public class Analysis {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @jakarta.persistence.OneToMany(mappedBy = "analysis", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<com.mpc.report.domain.Report> reports = new java.util.ArrayList<>();
+
     @Column(name = "location_name", nullable = false, length = 255)
     private String locationName;
 
