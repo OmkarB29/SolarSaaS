@@ -181,6 +181,50 @@ export const downloadAnalysisReport = (analysis, forecastData = null) => {
       y2 += 8;
     });
 
+    // Battery Storage Recommendation & Energy Deficit Analysis
+    y2 += 6;
+    document.setDrawColor(226, 232, 240);
+    document.line(margin, y2, pageWidth - margin, y2);
+
+    y2 += 8;
+    document.setTextColor(15, 23, 42);
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(12.5);
+    document.text('Battery Storage Recommendation & Energy Deficit Analysis', margin, y2);
+
+    y2 += 5;
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(8.5);
+    document.setTextColor(100, 116, 139);
+    document.text('Engineered for rooftop solar surplus absorption, peak shaving, and blackout resilience', margin, y2);
+
+    y2 += 6;
+    document.setFillColor(240, 253, 244);
+    document.roundedRect(margin, y2, pageWidth - margin * 2, 21, 2, 2, 'F');
+    document.setDrawColor(187, 247, 208);
+    document.setLineWidth(0.5);
+    document.roundedRect(margin, y2, pageWidth - margin * 2, 21, 2, 2, 'D');
+
+    const recCap = analysis?.recommendedBatteryCapacity || (totalGen > 0 ? Math.max(15, Math.round((totalGen / 10 * 1.5) / 5) * 5) : 30);
+    const backupDays = Math.round((recCap * 0.9 / 32) * 10) / 10;
+    const deficitEst = Math.round(Math.max(0, 320 - totalGen) * 10) / 10;
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(8);
+    document.setTextColor(22, 101, 52);
+    document.text('RECOMMENDED BATTERY', margin + 6, y2 + 6);
+    document.text('BACKUP AUTONOMY', margin + 54, y2 + 6);
+    document.text('10-DAY FORECAST DEFICIT', margin + 98, y2 + 6);
+    document.text('BATTERY CHEMISTRY', margin + 144, y2 + 6);
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(10.5);
+    document.setTextColor(15, 23, 42);
+    document.text(`${recCap} kWh System`, margin + 6, y2 + 15);
+    document.text(`${backupDays} Days`, margin + 54, y2 + 15);
+    document.text(`${deficitEst} kWh`, margin + 98, y2 + 15);
+    document.text('LiFePO4 (LFP)', margin + 144, y2 + 15);
+
     document.setDrawColor(226, 232, 240);
     document.line(margin, 278, pageWidth - margin, 278);
     document.setFont('helvetica', 'normal');

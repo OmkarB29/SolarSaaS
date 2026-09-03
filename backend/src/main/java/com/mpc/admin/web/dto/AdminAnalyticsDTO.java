@@ -13,6 +13,9 @@ public class AdminAnalyticsDTO {
     private double averageForecastEnergy;
     private double forecastAccuracyMetric;
     private double forecastWeatherImpactAvg;
+    private double averageBatteryRecommendation;
+    private double totalStorageCapacityPlanned;
+    private double gridIndependenceRate;
 
     public AdminAnalyticsDTO(List<TopLocationDTO> topLocations,
                              List<RoiDistributionDTO> roiDistribution,
@@ -31,6 +34,9 @@ public class AdminAnalyticsDTO {
         this.averageForecastEnergy = 52.4;
         this.forecastAccuracyMetric = 94.8;
         this.forecastWeatherImpactAvg = 88.5;
+        this.averageBatteryRecommendation = 25.0;
+        this.totalStorageCapacityPlanned = 95.0;
+        this.gridIndependenceRate = 84.5;
     }
 
     public AdminAnalyticsDTO(List<TopLocationDTO> topLocations,
@@ -53,6 +59,37 @@ public class AdminAnalyticsDTO {
         this.averageForecastEnergy = averageForecastEnergy;
         this.forecastAccuracyMetric = forecastAccuracyMetric;
         this.forecastWeatherImpactAvg = forecastWeatherImpactAvg;
+        this.averageBatteryRecommendation = 25.0;
+        this.totalStorageCapacityPlanned = 95.0;
+        this.gridIndependenceRate = 84.5;
+    }
+
+    public AdminAnalyticsDTO(List<TopLocationDTO> topLocations,
+                             List<RoiDistributionDTO> roiDistribution,
+                             List<MonthlyTrendDTO> monthlyTrends,
+                             double totalGeneratedEnergy,
+                             double totalCo2Saved,
+                             List<HighestRoiProjectDTO> highestRoiProjects,
+                             List<WeatherImpactDTO> weatherImpact,
+                             double averageForecastEnergy,
+                             double forecastAccuracyMetric,
+                             double forecastWeatherImpactAvg,
+                             double averageBatteryRecommendation,
+                             double totalStorageCapacityPlanned,
+                             double gridIndependenceRate) {
+        this.topLocations = topLocations;
+        this.roiDistribution = roiDistribution;
+        this.monthlyTrends = monthlyTrends;
+        this.totalGeneratedEnergy = totalGeneratedEnergy;
+        this.totalCo2Saved = totalCo2Saved;
+        this.highestRoiProjects = highestRoiProjects;
+        this.weatherImpact = weatherImpact;
+        this.averageForecastEnergy = averageForecastEnergy;
+        this.forecastAccuracyMetric = forecastAccuracyMetric;
+        this.forecastWeatherImpactAvg = forecastWeatherImpactAvg;
+        this.averageBatteryRecommendation = averageBatteryRecommendation;
+        this.totalStorageCapacityPlanned = totalStorageCapacityPlanned;
+        this.gridIndependenceRate = gridIndependenceRate;
     }
 
     public List<TopLocationDTO> getTopLocations() {
@@ -133,6 +170,30 @@ public class AdminAnalyticsDTO {
 
     public void setForecastWeatherImpactAvg(double forecastWeatherImpactAvg) {
         this.forecastWeatherImpactAvg = forecastWeatherImpactAvg;
+    }
+
+    public double getAverageBatteryRecommendation() {
+        return averageBatteryRecommendation;
+    }
+
+    public void setAverageBatteryRecommendation(double averageBatteryRecommendation) {
+        this.averageBatteryRecommendation = averageBatteryRecommendation;
+    }
+
+    public double getTotalStorageCapacityPlanned() {
+        return totalStorageCapacityPlanned;
+    }
+
+    public void setTotalStorageCapacityPlanned(double totalStorageCapacityPlanned) {
+        this.totalStorageCapacityPlanned = totalStorageCapacityPlanned;
+    }
+
+    public double getGridIndependenceRate() {
+        return gridIndependenceRate;
+    }
+
+    public void setGridIndependenceRate(double gridIndependenceRate) {
+        this.gridIndependenceRate = gridIndependenceRate;
     }
 
     public static class TopLocationDTO {

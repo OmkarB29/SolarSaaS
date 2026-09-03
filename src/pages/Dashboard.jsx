@@ -23,6 +23,7 @@ import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
 import { downloadAnalysisReport, getLatestAnalysis } from '../services/reportService';
 import ForecastSection from '../components/forecast/ForecastSection';
+import BatteryPlannerSection from '../components/battery/BatteryPlannerSection';
 
 const monthlyEnergyData = [
   { name: 'Jan', value: 400 },
@@ -211,6 +212,9 @@ const Dashboard = () => {
 
       {/* 10-Day Energy Forecast Section */}
       <ForecastSection analysis={latestAnalysis} />
+
+      {/* Battery Storage Planner & Deficit Prediction */}
+      <BatteryPlannerSection analysis={latestAnalysis} />
     </div>
   );
 };

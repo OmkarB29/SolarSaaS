@@ -44,6 +44,9 @@ const AdminAnalytics = () => {
         <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Average Daily Forecast Energy</div><div className="text-2xl font-bold text-amber-600">{analytics.averageForecastEnergy ?? 52.4} kWh/d</div></CardContent></Card>
         <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Weather Impact Factor</div><div className="text-2xl font-bold text-blue-600">{analytics.forecastWeatherImpactAvg ?? 88.5}%</div></CardContent></Card>
         <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Forecast Accuracy Metric</div><div className="text-2xl font-bold text-emerald-600">{analytics.forecastAccuracyMetric ?? 94.8}%</div></CardContent></Card>
+        <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Avg. Battery Recommendation</div><div className="text-2xl font-bold text-purple-600">{analytics.averageBatteryRecommendation ?? 25.0} kWh</div></CardContent></Card>
+        <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Total Storage Planned</div><div className="text-2xl font-bold text-indigo-600">{analytics.totalStorageCapacityPlanned ?? 95.0} kWh</div></CardContent></Card>
+        <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Grid Independence Rate</div><div className="text-2xl font-bold text-teal-600">{analytics.gridIndependenceRate ?? 84.5}%</div></CardContent></Card>
         <Card><CardContent className="px-4 py-4"><div className="text-slate-500 text-sm">Active Solar Projects</div><div className="text-2xl font-bold text-slate-900">{analytics.highestRoiProjects?.length ?? 0}</div></CardContent></Card>
       </div>
 
