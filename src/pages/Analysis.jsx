@@ -180,9 +180,15 @@ const Analysis = () => {
         filePath: `/reports/${reportName.replace(/\s+/g, '_')}.pdf`,
       };
 
-      await reportApiService.saveReport(reportData);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 4000);
+      const savedReportResponse = await reportApiService.saveReport(reportData);
+      let successMsg = 'Proposal saved to PostgreSQL!';
+      if (savedReportResponse?.emailStatus === 'SENT') {
+        successMsg = 'Proposal saved & report emailed to your inbox!';
+      } else if (savedReportResponse?.emailStatus === 'FAILED') {
+        successMsg = 'Proposal saved (Auto-email notice: SMTP not configured)';
+      }
+      setSaveSuccess(successMsg);
+      setTimeout(() => setSaveSuccess(''), 5000);
     } catch (error) {
       setSaveError(error.message || 'Failed to save proposal. Please try again.');
     } finally {
@@ -247,7 +253,7 @@ const Analysis = () => {
           {saveSuccess && (
             <div className="text-emerald-600 text-sm font-semibold flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
               <CheckCircle2 size={16} />
-              Proposal saved to PostgreSQL!
+              {saveSuccess}
             </div>
           )}
           {saveError && (

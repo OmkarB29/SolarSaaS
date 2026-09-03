@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../context/useAuth';
+import { userSettingsService } from '../services/userSettingsService';
 
 const DEFAULT_SETTINGS = {
   // Profile
@@ -89,19 +90,43 @@ const Settings = () => {
         email: prev.email || user.email || 'user@solarsaas.com',
       }));
     }
+
+    // Load persisted settings from PostgreSQL
+    userSettingsService.getSettings()
+      .then((res) => {
+        if (res && res.autoEmailReports !== undefined) {
+          setSettings((prev) => ({ ...prev, emailReports: res.autoEmailReports }));
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load backend user settings:', err);
+      });
   }, [user]);
 
   const handleToggle = (key) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+    const nextVal = !settings[key];
+    setSettings((prev) => ({ ...prev, [key]: nextVal }));
+
+    if (key === 'emailReports') {
+      userSettingsService.updateSettings({ autoEmailReports: nextVal }).catch((err) => {
+        console.warn('Could not persist autoEmailReports toggle in backend:', err);
+      });
+    }
   };
 
   const handleChange = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     if (e) e.preventDefault();
     localStorage.setItem('solarscope.settings', JSON.stringify(settings));
+
+    try {
+      await userSettingsService.updateSettings({ autoEmailReports: settings.emailReports });
+    } catch (err) {
+      console.warn('Could not persist settings in backend:', err);
+    }
 
     // Also update cached auth user object if name/email changed
     try {
@@ -313,8 +338,13 @@ const Settings = () => {
                   
                   <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
                     <div>
-                      <p className="font-medium text-slate-800">Auto-Email Reports</p>
-                      <p className="text-xs text-slate-500">Automatically dispatch a PDF copy when generating solar feasibility proposals</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-slate-800">Auto-Email Reports</p>
+                        <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          PostgreSQL Synced
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">Automatically dispatch a PDF copy when generating solar feasibility proposals</p>
                     </div>
                     <button 
                       type="button"

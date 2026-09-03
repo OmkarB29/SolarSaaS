@@ -16,6 +16,10 @@ public class AdminAnalyticsDTO {
     private double averageBatteryRecommendation;
     private double totalStorageCapacityPlanned;
     private double gridIndependenceRate;
+    private long totalEmailsSent;
+    private long successfulEmailDeliveries;
+    private long failedEmailDeliveries;
+    private List<RecentEmailDTO> recentEmails;
 
     public AdminAnalyticsDTO(List<TopLocationDTO> topLocations,
                              List<RoiDistributionDTO> roiDistribution,
@@ -363,6 +367,107 @@ public class AdminAnalyticsDTO {
 
         public void setUnit(String unit) {
             this.unit = unit;
+        }
+    }
+
+    public long getTotalEmailsSent() {
+        return totalEmailsSent;
+    }
+
+    public void setTotalEmailsSent(long totalEmailsSent) {
+        this.totalEmailsSent = totalEmailsSent;
+    }
+
+    public long getSuccessfulEmailDeliveries() {
+        return successfulEmailDeliveries;
+    }
+
+    public void setSuccessfulEmailDeliveries(long successfulEmailDeliveries) {
+        this.successfulEmailDeliveries = successfulEmailDeliveries;
+    }
+
+    public long getFailedEmailDeliveries() {
+        return failedEmailDeliveries;
+    }
+
+    public void setFailedEmailDeliveries(long failedEmailDeliveries) {
+        this.failedEmailDeliveries = failedEmailDeliveries;
+    }
+
+    public List<RecentEmailDTO> getRecentEmails() {
+        return recentEmails;
+    }
+
+    public void setRecentEmails(List<RecentEmailDTO> recentEmails) {
+        this.recentEmails = recentEmails;
+    }
+
+    public static class RecentEmailDTO {
+        private Long id;
+        private String recipientEmail;
+        private String subject;
+        private String status;
+        private java.time.Instant sentAt;
+        private String errorMessage;
+
+        public RecentEmailDTO() {
+        }
+
+        public RecentEmailDTO(Long id, String recipientEmail, String subject, String status, java.time.Instant sentAt, String errorMessage) {
+            this.id = id;
+            this.recipientEmail = recipientEmail;
+            this.subject = subject;
+            this.status = status;
+            this.sentAt = sentAt;
+            this.errorMessage = errorMessage;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getRecipientEmail() {
+            return recipientEmail;
+        }
+
+        public void setRecipientEmail(String recipientEmail) {
+            this.recipientEmail = recipientEmail;
+        }
+
+        public String getSubject() {
+            return subject;
+        }
+
+        public void setSubject(String subject) {
+            this.subject = subject;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public java.time.Instant getSentAt() {
+            return sentAt;
+        }
+
+        public void setSentAt(java.time.Instant sentAt) {
+            this.sentAt = sentAt;
+        }
+
+        public String getErrorMessage() {
+            return errorMessage;
+        }
+
+        public void setErrorMessage(String errorMessage) {
+            this.errorMessage = errorMessage;
         }
     }
 }

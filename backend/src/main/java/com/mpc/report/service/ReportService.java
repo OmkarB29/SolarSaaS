@@ -21,13 +21,16 @@ public class ReportService {
     private final ReportRepository reportRepository;
     private final UserRepository userRepository;
     private final AnalysisRepository analysisRepository;
+    private final com.mpc.email.service.EmailService emailService;
 
     public ReportService(ReportRepository reportRepository,
                          UserRepository userRepository,
-                         AnalysisRepository analysisRepository) {
+                         AnalysisRepository analysisRepository,
+                         com.mpc.email.service.EmailService emailService) {
         this.reportRepository = reportRepository;
         this.userRepository = userRepository;
         this.analysisRepository = analysisRepository;
+        this.emailService = emailService;
     }
 
     @Transactional
@@ -43,7 +46,18 @@ public class ReportService {
         report.setFilePath(request.getFilePath());
         report.setReportPath(request.getFilePath());
 
-        return toResponse(reportRepository.save(report));
+        Report savedReport = reportRepository.save(report);
+
+        String emailStatus = "DISABLED";
+        String emailMessage = null;
+
+        if (Boolean.TRUE.equals(user.getAutoEmailReports())) {
+            var history = emailService.sendAnalysisReportEmail(user, savedReport, analysis);
+            emailStatus = history.getStatus();
+            emailMessage = history.getErrorMessage();
+        }
+
+        return toResponse(savedReport, emailStatus, emailMessage);
     }
 
     @Transactional(readOnly = true)
@@ -82,6 +96,10 @@ public class ReportService {
     }
 
     private ReportResponse toResponse(Report report) {
+        return toResponse(report, null, null);
+    }
+
+    private ReportResponse toResponse(Report report, String emailStatus, String emailMessage) {
         return new ReportResponse(
                 report.getId(),
                 report.getReportName(),
@@ -89,7 +107,9 @@ public class ReportService {
                 report.getGeneratedAt(),
                 report.getFilePath(),
                 report.getAnalysis().getId(),
-                report.getCreatedAt()
+                report.getCreatedAt(),
+                emailStatus,
+                emailMessage
         );
     }
 }

@@ -41,6 +41,9 @@ public class User {
     @Column(nullable = false, length = 50)
     private String role = "ROLE_USER";
 
+    @Column(name = "auto_email_reports", nullable = false)
+    private Boolean autoEmailReports = false;
+
     @com.fasterxml.jackson.annotation.JsonIgnore
     @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
     private List<Report> reports = new ArrayList<>();
@@ -123,6 +126,14 @@ public class User {
 
     public void setReports(List<Report> reports) {
         this.reports = reports;
+    }
+
+    public Boolean getAutoEmailReports() {
+        return autoEmailReports != null && autoEmailReports;
+    }
+
+    public void setAutoEmailReports(Boolean autoEmailReports) {
+        this.autoEmailReports = autoEmailReports != null && autoEmailReports;
     }
 
     public static final class Builder {

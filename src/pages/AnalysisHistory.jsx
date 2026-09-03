@@ -65,21 +65,33 @@ const AnalysisHistory = () => {
     }
   };
 
+  const [successMsg, setSuccessMsg] = useState('');
+
   const handleGenerateReport = async (analysis) => {
     setGeneratingReportId(analysis.id);
     setError('');
+    setSuccessMsg('');
 
     try {
       // Trigger PDF download
       downloadAnalysisReport(analysis);
 
       // Save report record to backend
-      await reportApiService.saveReport({
+      const reportRes = await reportApiService.saveReport({
         reportName: `Solar Feasibility - ${analysis.locationName || 'Rooftop'}`,
         reportType: 'PDF',
         analysisId: analysis.id,
         filePath: `/reports/solar_feasibility_${analysis.id}.pdf`,
       });
+
+      let notice = 'Report saved to database successfully!';
+      if (reportRes?.emailStatus === 'SENT') {
+        notice = 'Report saved & dispatched to your email!';
+      } else if (reportRes?.emailStatus === 'FAILED') {
+        notice = 'Report saved (Auto-email notice: SMTP credentials not configured)';
+      }
+      setSuccessMsg(notice);
+      setTimeout(() => setSuccessMsg(''), 5000);
     } catch (reportError) {
       setError(reportError.message || 'Failed to save report to backend');
     } finally {
@@ -151,6 +163,12 @@ const AnalysisHistory = () => {
       {error && (
         <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {successMsg}
         </div>
       )}
 

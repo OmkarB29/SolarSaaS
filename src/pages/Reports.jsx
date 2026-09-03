@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileDown, Trash2, MapPin, CalendarDays, FileText, ArrowRight } from 'lucide-react';
+import { FileDown, Trash2, MapPin, CalendarDays, FileText, ArrowRight, Mail, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Table } from '../components/ui/Table';
 import { reportApiService } from '../services/reportApiService';
 import { analysisApiService } from '../services/analysisApiService';
 import { downloadAnalysisReport } from '../services/reportService';
+import { userSettingsService } from '../services/userSettingsService';
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -17,6 +18,7 @@ const formatDate = (value) => {
 
 const Reports = () => {
   const [reports, setReports] = useState([]);
+  const [emailHistory, setEmailHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
@@ -25,11 +27,15 @@ const Reports = () => {
   useEffect(() => {
     let isMounted = true;
 
-    const loadReports = async () => {
+    const loadData = async () => {
       try {
-        const data = await reportApiService.getReports();
+        const [reportsData, historyData] = await Promise.all([
+          reportApiService.getReports().catch(() => []),
+          userSettingsService.getEmailHistory().catch(() => []),
+        ]);
         if (isMounted) {
-          setReports(data);
+          setReports(reportsData || []);
+          setEmailHistory(historyData || []);
         }
       } catch (loadError) {
         if (isMounted) setError(loadError.message);
@@ -38,7 +44,7 @@ const Reports = () => {
       }
     };
 
-    loadReports();
+    loadData();
 
     return () => {
       isMounted = false;
@@ -99,35 +105,94 @@ const Reports = () => {
     {
       header: '',
       cell: (row) => (
-        <div className="flex items-center gap-2">
+        <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={() => handleDownloadReport(row)}
             disabled={downloadingId === row.id}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+            className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 disabled:opacity-50 cursor-pointer"
           >
-            <FileDown size={16} />
-            {downloadingId === row.id ? 'Loading' : 'Download'}
+            <FileDown size={14} />
+            <span>{downloadingId === row.id ? 'Downloading...' : 'Download'}</span>
           </button>
           <button
             type="button"
             onClick={() => handleDeleteReport(row.id)}
             disabled={deletingId === row.id}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-70"
+            className="text-slate-400 hover:text-rose-600 disabled:opacity-50 cursor-pointer"
+            title="Delete report"
           >
             <Trash2 size={16} />
-            {deletingId === row.id ? 'Deleting' : 'Delete'}
           </button>
         </div>
       ),
     },
   ];
 
+  const emailColumns = [
+    {
+      header: 'Recipient',
+      accessorKey: 'recipientEmail',
+      cell: (row) => <span className="font-medium text-slate-800">{row.recipientEmail}</span>,
+    },
+    {
+      header: 'Subject / Report',
+      cell: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 text-xs">{row.subject}</p>
+          <p className="text-2xs text-slate-500">{row.reportName}</p>
+        </div>
+      ),
+    },
+    {
+      header: 'Delivery Status',
+      cell: (row) => {
+        if (row.status === 'SENT') {
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 size={12} />
+              SENT
+            </span>
+          );
+        }
+        if (row.status === 'FAILED') {
+          return (
+            <span 
+              title={row.errorMessage || 'Failed'}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 cursor-help"
+            >
+              <AlertTriangle size={12} />
+              FAILED
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <Clock size={12} />
+            PENDING
+          </span>
+        );
+      },
+    },
+    {
+      header: 'Details',
+      cell: (row) => (
+        <span className="text-xs text-slate-500 truncate max-w-[200px] block" title={row.errorMessage || 'Delivered successfully'}>
+          {row.errorMessage ? row.errorMessage : 'PDF attached & delivered'}
+        </span>
+      ),
+    },
+    {
+      header: 'Date',
+      cell: (row) => formatDate(row.sentAt),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Saved Reports</h1>
-        <p className="mt-1 text-slate-500">Manage your generated solar analysis reports</p>
+        <h1 className="text-2xl font-bold text-slate-900">Reports & Dispatch History</h1>
+        <p className="mt-1 text-slate-500">Manage your generated solar analysis reports and automated email deliveries</p>
       </div>
 
       {error && (
@@ -136,8 +201,9 @@ const Reports = () => {
         </div>
       )}
 
+      {/* Report History Card */}
       <Card className="p-0">
-        <CardHeader title="Report History" className="mb-0 p-6" />
+        <CardHeader title="Saved Reports in Database" className="mb-0 p-6" />
         {isLoading ? (
           <div className="px-6 pb-6 text-sm text-slate-500">Loading reports...</div>
         ) : reports.length ? (
@@ -166,6 +232,31 @@ const Reports = () => {
                 <span>View System Analysis</span>
               </Link>
             </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Auto Email Delivery History Card */}
+      <Card className="p-0">
+        <CardHeader 
+          title="Automated Email Delivery Logs" 
+          className="mb-0 p-6"
+          action={
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+              <Mail size={14} className="text-amber-500" />
+              <span>{emailHistory.length} Logged Deliveries</span>
+            </div>
+          }
+        />
+        {isLoading ? (
+          <div className="px-6 pb-6 text-sm text-slate-500">Loading email logs...</div>
+        ) : emailHistory.length ? (
+          <Table columns={emailColumns} data={emailHistory} />
+        ) : (
+          <div className="p-8 text-center text-sm text-slate-500">
+            <Mail size={24} className="mx-auto mb-2 text-slate-300" />
+            <p>No automated email dispatches recorded yet.</p>
+            <p className="text-xs text-slate-400 mt-1">Enable "Auto-Email Reports" in Settings to automatically receive PDF proposals via email.</p>
           </div>
         )}
       </Card>

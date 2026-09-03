@@ -39,17 +39,20 @@ public class AdminService {
     private final ReportRepository reportRepository;
     private final ForecastRepository forecastRepository;
     private final BatteryPlanRepository batteryPlanRepository;
+    private final com.mpc.email.repository.EmailHistoryRepository emailHistoryRepository;
 
     public AdminService(UserRepository userRepository,
                         AnalysisRepository analysisRepository,
                         ReportRepository reportRepository,
                         ForecastRepository forecastRepository,
-                        BatteryPlanRepository batteryPlanRepository) {
+                        BatteryPlanRepository batteryPlanRepository,
+                        com.mpc.email.repository.EmailHistoryRepository emailHistoryRepository) {
         this.userRepository = userRepository;
         this.analysisRepository = analysisRepository;
         this.reportRepository = reportRepository;
         this.forecastRepository = forecastRepository;
         this.batteryPlanRepository = batteryPlanRepository;
+        this.emailHistoryRepository = emailHistoryRepository;
     }
 
     public AdminDashboardDTO getDashboardStats() {
@@ -220,7 +223,29 @@ public class AdminService {
 
         double gridIndependenceRate = 84.5;
 
-        return new AdminAnalyticsDTO(topLocations, roiDistribution, monthlyTrends, totalGeneratedEnergy, totalCo2Saved, highestRoiProjects, weatherImpact, averageForecastEnergy, forecastAccuracyMetric, forecastWeatherImpactAvg, averageBatteryRecommendation, totalStorageCapacityPlanned, gridIndependenceRate);
+        AdminAnalyticsDTO dto = new AdminAnalyticsDTO(topLocations, roiDistribution, monthlyTrends, totalGeneratedEnergy, totalCo2Saved, highestRoiProjects, weatherImpact, averageForecastEnergy, forecastAccuracyMetric, forecastWeatherImpactAvg, averageBatteryRecommendation, totalStorageCapacityPlanned, gridIndependenceRate);
+
+        long totalEmails = emailHistoryRepository.count();
+        long successfulEmails = emailHistoryRepository.countByStatus("SENT");
+        long failedEmails = emailHistoryRepository.countByStatus("FAILED");
+
+        List<AdminAnalyticsDTO.RecentEmailDTO> recentEmails = emailHistoryRepository.findTop10RecentEmails().stream()
+                .map(e -> new AdminAnalyticsDTO.RecentEmailDTO(
+                        e.getId(),
+                        e.getRecipientEmail(),
+                        e.getSubject(),
+                        e.getStatus(),
+                        e.getSentAt(),
+                        e.getErrorMessage()
+                ))
+                .toList();
+
+        dto.setTotalEmailsSent(totalEmails);
+        dto.setSuccessfulEmailDeliveries(successfulEmails);
+        dto.setFailedEmailDeliveries(failedEmails);
+        dto.setRecentEmails(recentEmails);
+
+        return dto;
     }
 
     private AdminUserDTO toUserSummary(User user) {
