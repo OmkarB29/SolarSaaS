@@ -40,6 +40,9 @@ public class Report {
     @Column(name = "file_path", nullable = false, length = 512)
     private String filePath;
 
+    @Column(name = "report_path", nullable = true, length = 512)
+    private String reportPath;
+
     @Column(name = "generated_at", nullable = false)
     private Instant generatedAt;
 
@@ -97,6 +100,14 @@ public class Report {
         this.filePath = filePath;
     }
 
+    public String getReportPath() {
+        return reportPath;
+    }
+
+    public void setReportPath(String reportPath) {
+        this.reportPath = reportPath;
+    }
+
     public Instant getGeneratedAt() {
         return generatedAt;
     }
@@ -115,7 +126,21 @@ public class Report {
 
     @PrePersist
     protected void onCreate() {
-        this.generatedAt = Instant.now();
-        this.createdAt = Instant.now();
+        if (this.generatedAt == null) {
+            this.generatedAt = Instant.now();
+        }
+        if (this.createdAt == null) {
+            this.createdAt = Instant.now();
+        }
+        if (this.reportPath == null) {
+            this.reportPath = this.filePath != null ? this.filePath : "";
+        }
+    }
+
+    @jakarta.persistence.PreUpdate
+    protected void onUpdate() {
+        if (this.reportPath == null) {
+            this.reportPath = this.filePath != null ? this.filePath : "";
+        }
     }
 }

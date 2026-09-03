@@ -41,6 +41,7 @@ public class ReportService {
         report.setReportName(request.getReportName());
         report.setReportType(request.getReportType());
         report.setFilePath(request.getFilePath());
+        report.setReportPath(request.getFilePath());
 
         return toResponse(reportRepository.save(report));
     }
