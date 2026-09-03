@@ -32,6 +32,7 @@ public class JwtService {
                 .withSubject(user.getEmail())
                 .withClaim("username", user.getUsername())
                 .withClaim("email", user.getEmail())
+                .withClaim("role", user.getRole())
                 .withIssuedAt(Date.from(now))
                 .withExpiresAt(Date.from(now.plusMillis(expirationMs)))
                 .sign(algorithm);

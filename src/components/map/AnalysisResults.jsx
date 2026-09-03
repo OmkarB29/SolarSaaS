@@ -1,8 +1,11 @@
 import React from 'react';
-import { Banknote, Leaf, PanelsTopLeft, TrendingUp, Zap } from 'lucide-react';
+import { AlertCircle, Banknote, CloudSun, Leaf, PanelsTopLeft, TrendingUp, Zap } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-const formatNumber = (value) => new Intl.NumberFormat('en-IN').format(value);
+const formatNumber = (value, digits = 0) =>
+  value === null || value === undefined
+    ? '-'
+    : new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits }).format(value);
 const formatCurrency = (value) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -25,8 +28,19 @@ const AnalysisResults = ({ results }) => {
     return formatNumber(value);
   };
 
+  const weather = results.weather;
+
   return (
     <div className="space-y-6">
+      {results.weatherWarning && (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} />
+            <span>{results.weatherWarning}</span>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metricCards.map((item) => {
           const Icon = item.icon;
@@ -50,6 +64,52 @@ const AnalysisResults = ({ results }) => {
           );
         })}
       </div>
+
+      {weather && (
+        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center gap-3">
+            <div className="rounded-xl bg-sky-50 p-3 text-sky-600">
+              <CloudSun size={22} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Weather Adjustment</h3>
+              <p className="text-sm text-slate-500">Open-Meteo conditions applied without changing the base estimate.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-5">
+            <div>
+              <p className="text-sm text-slate-500">Temperature</p>
+              <p className="text-xl font-bold text-slate-900">
+                {formatNumber(weather.temperature, 1)} <span className="text-sm font-semibold text-slate-500">C</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Cloud Cover</p>
+              <p className="text-xl font-bold text-slate-900">
+                {formatNumber(weather.cloudCover)} <span className="text-sm font-semibold text-slate-500">%</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Sunshine Hours</p>
+              <p className="text-xl font-bold text-slate-900">{formatNumber(weather.sunshineHours, 1)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Summary</p>
+              <p className="text-base font-bold text-slate-900">{weather.weatherSummary}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Adjusted Generation</p>
+              <p className="text-xl font-bold text-slate-900">
+                {formatNumber(results.weatherAdjustedMonthlyGeneration)} <span className="text-sm font-semibold text-slate-500">kWh/mo</span>
+              </p>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                {results.weatherAdjustmentPercent > 0 ? '+' : ''}{results.weatherAdjustmentPercent}% vs base
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.5fr_0.8fr]">
         <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
@@ -105,9 +165,15 @@ const AnalysisResults = ({ results }) => {
               <span className="font-semibold">{formatNumber(results.panels)}</span>
             </div>
             <div className="flex justify-between border-b border-white/10 pb-3">
-              <span className="text-slate-400">Yearly generation</span>
+              <span className="text-slate-400">Base yearly generation</span>
               <span className="font-semibold">{formatNumber(results.yearlyGeneration)} kWh</span>
             </div>
+            {'weatherAdjustedYearlyGeneration' in results && (
+              <div className="flex justify-between border-b border-white/10 pb-3">
+                <span className="text-slate-400">Weather adjusted</span>
+                <span className="font-semibold">{formatNumber(results.weatherAdjustedYearlyGeneration)} kWh</span>
+              </div>
+            )}
             <div className="flex justify-between border-b border-white/10 pb-3">
               <span className="text-slate-400">Yearly savings</span>
               <span className="font-semibold">{formatCurrency(results.yearlySavings)}</span>

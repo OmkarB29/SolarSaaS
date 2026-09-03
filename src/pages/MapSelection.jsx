@@ -6,12 +6,14 @@ import InteractiveMap from '../components/map/InteractiveMap';
 import SearchLocation from '../components/map/SearchLocation';
 import { analysisApiService } from '../services/analysisApiService';
 import { geocodingService } from '../services/geocodingService';
-import { calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
+import { weatherApiService } from '../services/weatherApiService';
+import { applyWeatherAdjustment, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
 
 const DEFAULT_POSITION = [12.9716, 77.5946];
 
 const MapSelection = () => {
   const hasUserSelectedLocation = useRef(false);
+  const weatherDebounceRef = useRef(null);
   const [query, setQuery] = useState('Bengaluru');
   const [center, setCenter] = useState(DEFAULT_POSITION);
   const [locationBounds, setLocationBounds] = useState(null);
@@ -24,6 +26,7 @@ const MapSelection = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [isSavingAnalysis, setIsSavingAnalysis] = useState(false);
+  const [weatherData, setWeatherData] = useState(null);
   const [error, setError] = useState('');
 
   const resetRooftopSelection = useCallback(() => {
@@ -81,6 +84,21 @@ const MapSelection = () => {
     requestCurrentLocation({ silent: true });
   }, [requestCurrentLocation]);
 
+  useEffect(() => {
+    window.clearTimeout(weatherDebounceRef.current);
+
+    weatherDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const weather = await weatherApiService.getWeather(markerPosition[0], markerPosition[1]);
+        setWeatherData(weather);
+      } catch {
+        setWeatherData(null);
+      }
+    }, 600);
+
+    return () => window.clearTimeout(weatherDebounceRef.current);
+  }, [markerPosition]);
+
   const handleSearch = async (event) => {
     event.preventDefault();
     setIsSearching(true);
@@ -112,7 +130,27 @@ const MapSelection = () => {
 
     setError('');
     setIsSavingAnalysis(true);
-    const results = estimateSolarAnalysis(area);
+    const baseResults = estimateSolarAnalysis(area);
+    let weather = weatherData;
+    let results = baseResults;
+
+    try {
+      if (!weather) {
+        weather = await weatherApiService.getWeather(markerPosition[0], markerPosition[1]);
+        setWeatherData(weather);
+      }
+      results = applyWeatherAdjustment(baseResults, weather);
+    } catch {
+      const warning = 'Weather data is unavailable. Showing base generation estimate.';
+      results = {
+        ...baseResults,
+        weatherWarning: warning,
+        weatherAdjustedMonthlyGeneration: baseResults.monthlyGeneration,
+        weatherAdjustedYearlyGeneration: baseResults.yearlyGeneration,
+        weatherAdjustmentPercent: 0,
+      };
+    }
+
     const latestAnalysis = {
       ...results,
       location: markerLabel,

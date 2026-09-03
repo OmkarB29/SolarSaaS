@@ -2,6 +2,7 @@ package com.mpc.auth.web;
 
 import com.mpc.MpcApplication;
 import com.mpc.analysis.repository.AnalysisRepository;
+import com.mpc.user.domain.User;
 import com.mpc.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -93,6 +94,47 @@ class AuthControllerIntegrationTest {
                 .andExpect(content().string("analysis-ok"));
 
         mockMvc.perform(get("/api/users"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void adminUserCanAccessAdminEndpoints() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Admin",
+                                  "email": "admin@example.com",
+                                  "password": "password123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        User adminUser = userRepository.findByEmail("admin@example.com").orElseThrow();
+        adminUser.setRole("ROLE_ADMIN");
+        userRepository.save(adminUser);
+
+        String loginResponse = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "admin@example.com",
+                                  "password": "password123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String token = extractToken(loginResponse);
+
+        mockMvc.perform(get("/api/admin/users")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/dashboard")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk());
     }
 

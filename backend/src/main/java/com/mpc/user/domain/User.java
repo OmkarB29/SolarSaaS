@@ -38,6 +38,9 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(nullable = false, length = 50)
+    private String role = "ROLE_USER";
+
     @OneToMany(mappedBy = "user")
     private List<Report> reports = new ArrayList<>();
 
@@ -79,6 +82,14 @@ public class User {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 
     public String getPasswordHash() {

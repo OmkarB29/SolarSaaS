@@ -1,6 +1,21 @@
 const AUTH_KEY = 'solarscope.auth';
 const SESSION_KEY = 'solarscope.session';
 
+const decodeJwtRole = (token) => {
+  if (!token) return 'ROLE_USER';
+
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return 'ROLE_USER';
+
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(normalized));
+    return decoded.role || 'ROLE_USER';
+  } catch {
+    return 'ROLE_USER';
+  }
+};
+
 const requestJson = async (url, options) => {
   const response = await fetch(url, {
     headers: {
@@ -68,7 +83,7 @@ export const authService = {
       user: {
         fullName: email.split('@')[0],
         email,
-        role: 'Energy Analyst',
+        role: decodeJwtRole(loginResponse.token),
       },
       token: loginResponse.token,
       type: loginResponse.type || 'Bearer',
@@ -100,7 +115,7 @@ export const authService = {
       user: {
         fullName,
         email,
-        role: 'Energy Analyst',
+        role: decodeJwtRole(loginResponse.token),
       },
       token: loginResponse.token,
       type: loginResponse.type || 'Bearer',

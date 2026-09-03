@@ -5,6 +5,7 @@ import {
   Zap,
   Banknote,
   PiggyBank,
+  CloudSun,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
@@ -26,11 +27,18 @@ const profitData = Array.from({ length: 20 }, (_, i) => ({
   profit: (i < 4 ? -450000 + (120000 * i) : 120000 * (i - 4) + 30000),
 }));
 
+const formatNumber = (value, digits = 0) =>
+  value === null || value === undefined
+    ? '-'
+    : new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits }).format(value);
+
 const Analysis = () => {
   const panelGrid = Array.from({ length: 48 }, (_, i) => i); // mock 48 panels
+  const [latestAnalysis] = useState(() => getLatestAnalysis());
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const weather = latestAnalysis?.weather;
 
   const handleSaveProposal = async () => {
     setIsSaving(true);
@@ -38,7 +46,7 @@ const Analysis = () => {
     setSaveSuccess(false);
 
     try {
-      const analysis = getLatestAnalysis();
+      const analysis = latestAnalysis || getLatestAnalysis();
       if (!analysis) {
         setSaveError('No analysis data available. Please complete a solar analysis first.');
         return;
@@ -189,6 +197,48 @@ const Analysis = () => {
               <p className="text-xs text-slate-400 mt-2">Payback ~3.9 Years</p>
             </Card>
           </div>
+
+          {weather && (
+            <Card className="p-0">
+              <CardHeader title="Weather Adjustment" className="mb-0 pt-6 px-6" />
+              <CardContent>
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="rounded-xl bg-sky-50 p-3 text-sky-600">
+                    <CloudSun size={22} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900">{weather.weatherSummary}</h3>
+                    <p className="text-sm text-slate-500">Open-Meteo conditions</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
+                  <div>
+                    <p className="text-slate-500">Temperature</p>
+                    <p className="font-bold text-slate-900">{formatNumber(weather.temperature, 1)} C</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Cloud Cover</p>
+                    <p className="font-bold text-slate-900">{formatNumber(weather.cloudCover)}%</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Sunshine Hours</p>
+                    <p className="font-bold text-slate-900">{formatNumber(weather.sunshineHours, 1)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Base Generation</p>
+                    <p className="font-bold text-slate-900">{formatNumber(latestAnalysis.monthlyGeneration)} kWh/mo</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Weather Adjusted</p>
+                    <p className="font-bold text-slate-900">{formatNumber(latestAnalysis.weatherAdjustedMonthlyGeneration)} kWh/mo</p>
+                    <p className="text-xs font-medium text-slate-500">
+                      {latestAnalysis.weatherAdjustmentPercent > 0 ? '+' : ''}{latestAnalysis.weatherAdjustmentPercent}% vs base
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="p-0">
             <CardHeader 

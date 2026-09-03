@@ -7,10 +7,15 @@ import {
   History,
   FileText, 
   Settings,
-  Sun
+  Sun,
+  ShieldCheck,
 } from 'lucide-react';
+import { useAuth } from '../context/useAuth';
 
 const Sidebar = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ROLE_ADMIN';
+
   const navItems = [
     { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
     { to: '/map', icon: <MapIcon size={20} />, label: 'Map Selection' },
@@ -19,6 +24,16 @@ const Sidebar = () => {
     { to: '/reports', icon: <FileText size={20} />, label: 'Reports' },
     { to: '/settings', icon: <Settings size={20} />, label: 'Settings' },
   ];
+
+  if (isAdmin) {
+    navItems.push(
+      { to: '/admin', icon: <ShieldCheck size={20} />, label: 'Admin Dashboard' },
+      { to: '/admin/users', icon: <ShieldCheck size={20} />, label: 'Admin Users' },
+      { to: '/admin/analyses', icon: <BarChart3 size={20} />, label: 'Admin Analyses' },
+      { to: '/admin/reports', icon: <FileText size={20} />, label: 'Admin Reports' },
+      { to: '/admin/analytics', icon: <BarChart3 size={20} />, label: 'Admin Analytics' },
+    );
+  }
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full hidden md:flex">
