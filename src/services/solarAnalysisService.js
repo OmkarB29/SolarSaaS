@@ -50,3 +50,18 @@ export const estimateSolarAnalysis = (areaSqm) => {
     ],
   };
 };
+
+export const applyWeatherAdjustment = (analysis, weather) => {
+  const adjustmentFactor = weather?.weatherAdjustmentFactor ?? 1;
+  const weatherAdjustedMonthlyGeneration = Math.round(analysis.monthlyGeneration * adjustmentFactor);
+  const weatherAdjustedYearlyGeneration = weatherAdjustedMonthlyGeneration * 12;
+  const weatherAdjustmentPercent = Math.round((adjustmentFactor - 1) * 100);
+
+  return {
+    ...analysis,
+    weather,
+    weatherAdjustedMonthlyGeneration,
+    weatherAdjustedYearlyGeneration,
+    weatherAdjustmentPercent,
+  };
+};

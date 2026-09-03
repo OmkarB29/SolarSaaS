@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Sun,
   Layers,
   Zap,
   Banknote,
   PiggyBank,
+  CloudSun,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
@@ -18,14 +19,84 @@ import {
 } from 'recharts';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
+import { reportApiService } from '../services/reportApiService';
+import { analysisApiService } from '../services/analysisApiService';
+import { getLatestAnalysis } from '../services/reportService';
 
 const profitData = Array.from({ length: 20 }, (_, i) => ({
   year: `Year ${i + 1}`,
   profit: (i < 4 ? -450000 + (120000 * i) : 120000 * (i - 4) + 30000),
 }));
 
+const formatNumber = (value, digits = 0) =>
+  value === null || value === undefined
+    ? '-'
+    : new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits }).format(value);
+
 const Analysis = () => {
   const panelGrid = Array.from({ length: 48 }, (_, i) => i); // mock 48 panels
+  const [latestAnalysis] = useState(() => getLatestAnalysis());
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const weather = latestAnalysis?.weather;
+
+  const handleSaveProposal = async () => {
+    setIsSaving(true);
+    setSaveError('');
+    setSaveSuccess(false);
+
+    try {
+      const analysis = latestAnalysis || getLatestAnalysis();
+      if (!analysis) {
+        setSaveError('No analysis data available. Please complete a solar analysis first.');
+        return;
+      }
+
+      let analysisId = analysis.id;
+      if (!analysisId) {
+        const savedAnalysis = await analysisApiService.saveAnalysis({
+          locationName: analysis.location || analysis.locationName || 'Rooftop Site',
+          latitude: analysis.latitude || 12.9716,
+          longitude: analysis.longitude || 77.5946,
+          roofArea: analysis.roofArea || 100.0,
+          estimatedPanels: analysis.panels || analysis.estimatedPanels || 20,
+          monthlyGeneration: analysis.monthlyGeneration || 500.0,
+          installationCost: analysis.installationCost || 150000.0,
+          roi: analysis.roi || 15.0,
+          co2Reduction: analysis.co2Reduction || 400.0,
+          usableArea: analysis.usableArea || 80.0,
+          systemSize: analysis.systemSize || 8.0,
+          yearlyGeneration: analysis.yearlyGeneration || 6000.0,
+          yearlySavings: analysis.yearlySavings || 45000.0,
+          paybackPeriod: analysis.paybackPeriod || 4.0,
+        });
+        analysisId = savedAnalysis.id;
+        analysis.id = analysisId;
+        localStorage.setItem('latestAnalysis', JSON.stringify(analysis));
+      }
+
+      const reportName = `Solar Analysis - ${analysis.locationName || analysis.location || 'Rooftop'} - ${new Date().toLocaleDateString()}`;
+      
+      const { downloadAnalysisReport } = await import('../services/reportService');
+      downloadAnalysisReport(analysis);
+
+      const reportData = {
+        reportName: reportName,
+        reportType: 'PDF',
+        analysisId: analysisId,
+        filePath: `/reports/${reportName.replace(/\s+/g, '_')}.pdf`
+      };
+
+      await reportApiService.saveReport(reportData);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      setSaveError(error.message || 'Failed to save report. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -34,9 +105,27 @@ const Analysis = () => {
           <h1 className="text-2xl font-bold text-slate-900">System Analysis & Financials</h1>
           <p className="text-slate-500 mt-1">Detailed performance and economic projections</p>
         </div>
-        <button className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30">
-          Save Proposal
-        </button>
+        <div className="flex items-center gap-3">
+          {saveSuccess && (
+            <div className="text-green-600 text-sm font-medium flex items-center gap-1">
+              <CheckCircle2 size={16} />
+              Report saved successfully!
+            </div>
+          )}
+          {saveError && (
+            <div className="text-red-600 text-sm font-medium flex items-center gap-1">
+              <AlertCircle size={16} />
+              {saveError}
+            </div>
+          )}
+          <button 
+            onClick={handleSaveProposal}
+            disabled={isSaving}
+            className="bg-primary-500 hover:bg-primary-600 disabled:bg-primary-300 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30 disabled:cursor-not-allowed"
+          >
+            {isSaving ? 'Saving...' : 'Save Proposal'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -127,6 +216,48 @@ const Analysis = () => {
               <p className="text-xs text-slate-400 mt-2">Payback ~3.9 Years</p>
             </Card>
           </div>
+
+          {weather && (
+            <Card className="p-0">
+              <CardHeader title="Weather Adjustment" className="mb-0 pt-6 px-6" />
+              <CardContent>
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="rounded-xl bg-sky-50 p-3 text-sky-600">
+                    <CloudSun size={22} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900">{weather.weatherSummary}</h3>
+                    <p className="text-sm text-slate-500">Open-Meteo conditions</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
+                  <div>
+                    <p className="text-slate-500">Temperature</p>
+                    <p className="font-bold text-slate-900">{formatNumber(weather.temperature, 1)} C</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Cloud Cover</p>
+                    <p className="font-bold text-slate-900">{formatNumber(weather.cloudCover)}%</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Sunshine Hours</p>
+                    <p className="font-bold text-slate-900">{formatNumber(weather.sunshineHours, 1)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Base Generation</p>
+                    <p className="font-bold text-slate-900">{formatNumber(latestAnalysis.monthlyGeneration)} kWh/mo</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Weather Adjusted</p>
+                    <p className="font-bold text-slate-900">{formatNumber(latestAnalysis.weatherAdjustedMonthlyGeneration)} kWh/mo</p>
+                    <p className="text-xs font-medium text-slate-500">
+                      {latestAnalysis.weatherAdjustmentPercent > 0 ? '+' : ''}{latestAnalysis.weatherAdjustmentPercent}% vs base
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="p-0">
             <CardHeader 

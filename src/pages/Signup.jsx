@@ -31,7 +31,7 @@ const Signup = () => {
     setErrors((current) => ({ ...current, [field]: '' }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const nextErrors = {};
 
@@ -49,10 +49,14 @@ const Signup = () => {
     if (Object.keys(nextErrors).length) return;
 
     setIsSubmitting(true);
-    window.setTimeout(() => {
-      signup({ fullName: form.fullName.trim(), email: form.email.trim() });
+    try {
+      await signup({ fullName: form.fullName.trim(), email: form.email.trim(), password: form.password });
       navigate('/dashboard', { replace: true });
-    }, 650);
+    } catch (error) {
+      setErrors({ form: error.message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -122,6 +126,7 @@ const Signup = () => {
           {isSubmitting ? 'Creating account...' : 'Create Account'}
           {!isSubmitting && <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />}
         </button>
+        {errors.form && <p className="text-sm text-red-500">{errors.form}</p>}
       </form>
 
       <p className="mt-8 text-center text-sm text-slate-500">

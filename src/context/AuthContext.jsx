@@ -8,14 +8,14 @@ export const AuthProvider = ({ children }) => {
   const value = useMemo(
     () => ({
       user: auth?.user || null,
-      isAuthenticated: Boolean(auth?.user),
-      login(credentials) {
-        const nextAuth = authService.login(credentials);
+      isAuthenticated: Boolean(auth?.user && auth?.token),
+      async login(credentials) {
+        const nextAuth = await authService.login(credentials);
         setAuth(nextAuth);
         return nextAuth;
       },
-      signup(payload) {
-        const nextAuth = authService.signup(payload);
+      async signup(payload) {
+        const nextAuth = await authService.signup(payload);
         setAuth(nextAuth);
         return nextAuth;
       },

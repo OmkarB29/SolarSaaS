@@ -17,7 +17,19 @@ const getReportRows = (analysis) => [
   ['System Size', `${formatNumber(analysis.systemSize, 1)} kWp`],
   ['Estimated Panel Count', formatNumber(analysis.panels)],
   ['Estimated Monthly Energy', `${formatNumber(analysis.monthlyGeneration)} kWh`],
+  ...(analysis.weather && analysis.weatherAdjustedMonthlyGeneration
+    ? [['Weather Adjusted Monthly Energy', `${formatNumber(analysis.weatherAdjustedMonthlyGeneration)} kWh`]]
+    : []),
+  ...(analysis.weather
+    ? [
+        ['Weather Summary', analysis.weather.weatherSummary],
+        ['Cloud Adjustment', `${analysis.weatherAdjustmentPercent > 0 ? '+' : ''}${formatNumber(analysis.weatherAdjustmentPercent)}%`],
+      ]
+    : []),
   ['Estimated Annual Energy', `${formatNumber(analysis.yearlyGeneration)} kWh`],
+  ...(analysis.weather && analysis.weatherAdjustedYearlyGeneration
+    ? [['Weather Adjusted Annual Energy', `${formatNumber(analysis.weatherAdjustedYearlyGeneration)} kWh`]]
+    : []),
   ['Installation Cost', formatCurrency(analysis.installationCost)],
   ['Projected ROI', `${formatNumber(analysis.roi, 1)}%`],
   ['Payback Period', `${formatNumber(analysis.paybackPeriod, 1)} years`],

@@ -15,20 +15,30 @@ const defaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = defaultIcon;
 
-const MapViewUpdater = ({ center, zoom }) => {
+const MapViewUpdater = ({ center, bounds, zoom }) => {
   const map = useMap();
 
   useEffect(() => {
-    if (center) {
+    if (bounds?.length === 4) {
+      const [south, north, west, east] = bounds;
+      map.fitBounds(
+        [
+          [south, west],
+          [north, east],
+        ],
+        { padding: [32, 32], maxZoom: zoom }
+      );
+    } else if (center) {
       map.flyTo(center, zoom, { duration: 0.8 });
     }
-  }, [center, map, zoom]);
+  }, [bounds, center, map, zoom]);
 
   return null;
 };
 
 const InteractiveMap = ({
   center,
+  bounds,
   markerPosition,
   markerLabel,
   polygonCoordinates,
@@ -37,7 +47,7 @@ const InteractiveMap = ({
 }) => {
   return (
     <MapContainer center={center} zoom={18} className="h-full w-full" zoomControl>
-      <MapViewUpdater center={center} zoom={18} />
+      <MapViewUpdater center={center} bounds={bounds} zoom={18} />
       <TileLayer
         attribution='Tiles &copy; Esri, OpenStreetMap contributors'
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"

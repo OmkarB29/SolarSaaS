@@ -1,5 +1,6 @@
 package com.mpc.user.service;
 
+import com.mpc.analysis.repository.AnalysisRepository;
 import com.mpc.user.exception.UserNotFoundException;
 import com.mpc.user.repository.UserRepository;
 import com.mpc.user.web.dto.CreateUserRequest;
@@ -24,8 +25,12 @@ class UserServiceTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private AnalysisRepository analysisRepository;
+
     @BeforeEach
     void clean() {
+        analysisRepository.deleteAll();
         userRepository.deleteAll();
     }
 

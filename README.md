@@ -192,6 +192,21 @@ or
 mvn spring-boot:run
 ```
 
+If you see `UnsupportedClassVersionError`, make sure the backend is launched with Java 21:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+cd backend
+mvn spring-boot:run
+```
+
+If port `8080` is already in use, start it on another port:
+
+```powershell
+mvn spring-boot:run '-Dspring-boot.run.arguments=--server.port=8082'
+```
+
 Backend runs on
 
 ```

@@ -7,7 +7,6 @@ import com.mpc.user.repository.UserRepository;
 import com.mpc.user.web.dto.CreateUserRequest;
 import com.mpc.user.web.dto.UpdateUserRequest;
 import com.mpc.user.web.dto.UserResponse;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,11 +14,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Transactional(readOnly = true)
     public List<UserResponse> findAll() {
@@ -41,11 +44,10 @@ public class UserService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateUserException("Email already registered: " + request.getEmail());
         }
-        User user = User.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
-                .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .build();
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         return UserMapper.toResponse(userRepository.save(user));
     }
 

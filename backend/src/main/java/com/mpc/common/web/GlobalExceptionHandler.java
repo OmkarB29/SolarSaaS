@@ -5,6 +5,7 @@ import com.mpc.user.exception.UserNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -39,6 +40,18 @@ public class GlobalExceptionHandler {
                 .build();
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
+
+        @ExceptionHandler(BadCredentialsException.class)
+        public ResponseEntity<ErrorResponse> handleBadCredentials(BadCredentialsException ex) {
+                ErrorResponse body = ErrorResponse.builder()
+                                .timestamp(Instant.now())
+                                .status(HttpStatus.UNAUTHORIZED.value())
+                                .error(HttpStatus.UNAUTHORIZED.getReasonPhrase())
+                                .message(ex.getMessage())
+                                .fieldErrors(null)
+                                .build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+        }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {

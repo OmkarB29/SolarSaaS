@@ -1,17 +1,23 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Compass, Layers, MapPin } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, Compass, Layers, MapPin } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import AnalysisResults from '../components/map/AnalysisResults';
 import InteractiveMap from '../components/map/InteractiveMap';
 import SearchLocation from '../components/map/SearchLocation';
+import { analysisApiService } from '../services/analysisApiService';
+import { reportApiService } from '../services/reportApiService';
 import { geocodingService } from '../services/geocodingService';
-import { calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
+import { weatherApiService } from '../services/weatherApiService';
+import { applyWeatherAdjustment, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
 
 const DEFAULT_POSITION = [12.9716, 77.5946];
 
 const MapSelection = () => {
+  const hasUserSelectedLocation = useRef(false);
+  const weatherDebounceRef = useRef(null);
   const [query, setQuery] = useState('Bengaluru');
   const [center, setCenter] = useState(DEFAULT_POSITION);
+  const [locationBounds, setLocationBounds] = useState(null);
   const [markerPosition, setMarkerPosition] = useState(DEFAULT_POSITION);
   const [markerLabel, setMarkerLabel] = useState('Bengaluru, Karnataka');
   const [polygonCoordinates, setPolygonCoordinates] = useState([]);
@@ -20,14 +26,29 @@ const MapSelection = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isSavingAnalysis, setIsSavingAnalysis] = useState(false);
+  const [weatherData, setWeatherData] = useState(null);
   const [error, setError] = useState('');
+  const [saveFeedback, setSaveFeedback] = useState(null);
 
-  const updateLocation = useCallback((position, label) => {
+  const resetRooftopSelection = useCallback(() => {
+    setPolygonCoordinates([]);
+    setArea(0);
+    setAnalysisResults(null);
+    setSaveFeedback(null);
+    setIsDrawing(false);
+  }, []);
+
+  const updateLocation = useCallback((position, label, bounds = null, shouldResetRooftop = false) => {
     setCenter(position);
+    setLocationBounds(bounds);
     setMarkerPosition(position);
     setMarkerLabel(label);
+    if (shouldResetRooftop) {
+      resetRooftopSelection();
+    }
     setError('');
-  }, []);
+  }, [resetRooftopSelection]);
 
   const requestCurrentLocation = useCallback(
     ({ silent = false } = {}) => {
@@ -39,8 +60,13 @@ const MapSelection = () => {
       setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          if (silent && hasUserSelectedLocation.current) {
+            setIsLocating(false);
+            return;
+          }
+
           const currentPosition = [position.coords.latitude, position.coords.longitude];
-          updateLocation(currentPosition, 'Your current location');
+          updateLocation(currentPosition, 'Your current location', null, true);
           setQuery('Current location');
           setIsLocating(false);
         },
@@ -61,6 +87,21 @@ const MapSelection = () => {
     requestCurrentLocation({ silent: true });
   }, [requestCurrentLocation]);
 
+  useEffect(() => {
+    window.clearTimeout(weatherDebounceRef.current);
+
+    weatherDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const weather = await weatherApiService.getWeather(markerPosition[0], markerPosition[1]);
+        setWeatherData(weather);
+      } catch {
+        setWeatherData(null);
+      }
+    }, 600);
+
+    return () => window.clearTimeout(weatherDebounceRef.current);
+  }, [markerPosition]);
+
   const handleSearch = async (event) => {
     event.preventDefault();
     setIsSearching(true);
@@ -68,7 +109,8 @@ const MapSelection = () => {
 
     try {
       const result = await geocodingService.searchLocation(query);
-      updateLocation(result.position, result.label);
+      hasUserSelectedLocation.current = true;
+      updateLocation(result.position, result.label, result.bounds, true);
     } catch (searchError) {
       setError(searchError.message);
     } finally {
@@ -83,14 +125,35 @@ const MapSelection = () => {
     setIsDrawing(false);
   }, []);
 
-  const handleRunAnalysis = () => {
+  const handleRunAnalysis = async () => {
     if (!area) {
       setError('Draw a rooftop polygon before running analysis.');
       return;
     }
 
     setError('');
-    const results = estimateSolarAnalysis(area);
+    setIsSavingAnalysis(true);
+    const baseResults = estimateSolarAnalysis(area);
+    let weather = weatherData;
+    let results = baseResults;
+
+    try {
+      if (!weather) {
+        weather = await weatherApiService.getWeather(markerPosition[0], markerPosition[1]);
+        setWeatherData(weather);
+      }
+      results = applyWeatherAdjustment(baseResults, weather);
+    } catch {
+      const warning = 'Weather data is unavailable. Showing base generation estimate.';
+      results = {
+        ...baseResults,
+        weatherWarning: warning,
+        weatherAdjustedMonthlyGeneration: baseResults.monthlyGeneration,
+        weatherAdjustedYearlyGeneration: baseResults.yearlyGeneration,
+        weatherAdjustmentPercent: 0,
+      };
+    }
+
     const latestAnalysis = {
       ...results,
       location: markerLabel,
@@ -102,6 +165,48 @@ const MapSelection = () => {
 
     setAnalysisResults(results);
     localStorage.setItem('latestAnalysis', JSON.stringify(latestAnalysis));
+
+    try {
+      const savedAnalysis = await analysisApiService.saveAnalysis({
+        locationName: markerLabel,
+        latitude: markerPosition[0],
+        longitude: markerPosition[1],
+        roofArea: area,
+        estimatedPanels: results.panels,
+        monthlyGeneration: results.monthlyGeneration,
+        installationCost: results.installationCost,
+        roi: results.roi,
+        co2Reduction: results.co2Reduction,
+        usableArea: latestAnalysis.usableArea,
+        systemSize: latestAnalysis.systemSize,
+        yearlyGeneration: results.yearlyGeneration,
+        yearlySavings: results.yearlySavings,
+        paybackPeriod: results.paybackPeriod,
+      });
+      localStorage.setItem('latestAnalysis', JSON.stringify({ ...latestAnalysis, id: savedAnalysis.id }));
+
+      try {
+        await reportApiService.saveReport({
+          reportName: `Solar Feasibility - ${markerLabel || 'Rooftop Site'}`,
+          reportType: 'PDF',
+          analysisId: savedAnalysis.id,
+          filePath: `/reports/solar_feasibility_${savedAnalysis.id}.pdf`,
+        });
+      } catch {
+        // Non-blocking if report save fails
+      }
+
+      setSaveFeedback({ type: 'success', message: 'Analysis & Report saved to database successfully!' });
+    } catch (saveError) {
+      setSaveFeedback({ 
+        type: 'warning', 
+        message: saveError.message?.includes('Sign in') 
+          ? 'Analysis calculated locally! Please sign in to sync it to your database history.' 
+          : `Analysis saved locally (${saveError.message})`
+      });
+    } finally {
+      setIsSavingAnalysis(false);
+    }
   };
 
   const estimatedPanels = Math.floor(area / 2.5);
@@ -162,9 +267,10 @@ const MapSelection = () => {
           <button
             type="button"
             onClick={handleRunAnalysis}
-            className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-4 font-bold text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800"
+            disabled={isSavingAnalysis}
+            className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-4 font-bold text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            <span>Run Analysis</span>
+            <span>{isSavingAnalysis ? 'Saving Analysis...' : 'Run Analysis'}</span>
             <Layers size={20} className="transition-transform group-hover:translate-x-1" />
           </button>
         </div>
@@ -172,6 +278,7 @@ const MapSelection = () => {
         <div className="relative col-span-1 h-full min-h-[560px] overflow-hidden rounded-xl border border-slate-200 lg:col-span-3">
           <InteractiveMap
             center={center}
+            bounds={locationBounds}
             markerPosition={markerPosition}
             markerLabel={markerLabel}
             polygonCoordinates={polygonCoordinates}
@@ -185,6 +292,17 @@ const MapSelection = () => {
           </div>
         </div>
       </Card>
+
+      {saveFeedback && (
+        <div className={`rounded-xl border px-4 py-3 text-sm font-medium flex items-center gap-2 ${
+          saveFeedback.type === 'success' 
+            ? 'border-green-200 bg-green-50 text-green-700' 
+            : 'border-amber-200 bg-amber-50 text-amber-700'
+        }`}>
+          {saveFeedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+          <span>{saveFeedback.message}</span>
+        </div>
+      )}
 
       <AnalysisResults results={analysisResults} />
     </div>
