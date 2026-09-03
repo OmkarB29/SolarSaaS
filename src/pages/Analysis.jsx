@@ -20,6 +20,7 @@ import {
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
 import { reportApiService } from '../services/reportApiService';
+import { analysisApiService } from '../services/analysisApiService';
 import { getLatestAnalysis } from '../services/reportService';
 
 const profitData = Array.from({ length: 20 }, (_, i) => ({
@@ -52,25 +53,43 @@ const Analysis = () => {
         return;
       }
 
-      // Generate a unique report name
-      const reportName = `Solar Analysis - ${analysis.locationName || 'Unknown Location'} - ${new Date().toLocaleDateString()}`;
+      let analysisId = analysis.id;
+      if (!analysisId) {
+        const savedAnalysis = await analysisApiService.saveAnalysis({
+          locationName: analysis.location || analysis.locationName || 'Rooftop Site',
+          latitude: analysis.latitude || 12.9716,
+          longitude: analysis.longitude || 77.5946,
+          roofArea: analysis.roofArea || 100.0,
+          estimatedPanels: analysis.panels || analysis.estimatedPanels || 20,
+          monthlyGeneration: analysis.monthlyGeneration || 500.0,
+          installationCost: analysis.installationCost || 150000.0,
+          roi: analysis.roi || 15.0,
+          co2Reduction: analysis.co2Reduction || 400.0,
+          usableArea: analysis.usableArea || 80.0,
+          systemSize: analysis.systemSize || 8.0,
+          yearlyGeneration: analysis.yearlyGeneration || 6000.0,
+          yearlySavings: analysis.yearlySavings || 45000.0,
+          paybackPeriod: analysis.paybackPeriod || 4.0,
+        });
+        analysisId = savedAnalysis.id;
+        analysis.id = analysisId;
+        localStorage.setItem('latestAnalysis', JSON.stringify(analysis));
+      }
+
+      const reportName = `Solar Analysis - ${analysis.locationName || analysis.location || 'Rooftop'} - ${new Date().toLocaleDateString()}`;
       
-      // Generate the PDF (this will download it)
       const { downloadAnalysisReport } = await import('../services/reportService');
       downloadAnalysisReport(analysis);
 
-      // Save report metadata to backend
       const reportData = {
         reportName: reportName,
         reportType: 'PDF',
-        analysisId: analysis.id,
+        analysisId: analysisId,
         filePath: `/reports/${reportName.replace(/\s+/g, '_')}.pdf`
       };
 
       await reportApiService.saveReport(reportData);
       setSaveSuccess(true);
-      
-      // Clear success message after 3 seconds
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       setSaveError(error.message || 'Failed to save report. Please try again.');

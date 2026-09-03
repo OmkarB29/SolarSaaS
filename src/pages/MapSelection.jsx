@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Compass, Layers, MapPin } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Compass, Layers, MapPin } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import AnalysisResults from '../components/map/AnalysisResults';
 import InteractiveMap from '../components/map/InteractiveMap';
@@ -28,11 +28,13 @@ const MapSelection = () => {
   const [isSavingAnalysis, setIsSavingAnalysis] = useState(false);
   const [weatherData, setWeatherData] = useState(null);
   const [error, setError] = useState('');
+  const [saveFeedback, setSaveFeedback] = useState(null);
 
   const resetRooftopSelection = useCallback(() => {
     setPolygonCoordinates([]);
     setArea(0);
     setAnalysisResults(null);
+    setSaveFeedback(null);
     setIsDrawing(false);
   }, []);
 
@@ -181,8 +183,14 @@ const MapSelection = () => {
         paybackPeriod: results.paybackPeriod,
       });
       localStorage.setItem('latestAnalysis', JSON.stringify({ ...latestAnalysis, id: savedAnalysis.id }));
+      setSaveFeedback({ type: 'success', message: 'Analysis saved to database & history successfully!' });
     } catch (saveError) {
-      setError(saveError.message);
+      setSaveFeedback({ 
+        type: 'warning', 
+        message: saveError.message?.includes('Sign in') 
+          ? 'Analysis calculated locally! Please sign in to sync it to your database history.' 
+          : `Analysis saved locally (${saveError.message})`
+      });
     } finally {
       setIsSavingAnalysis(false);
     }
@@ -271,6 +279,17 @@ const MapSelection = () => {
           </div>
         </div>
       </Card>
+
+      {saveFeedback && (
+        <div className={`rounded-xl border px-4 py-3 text-sm font-medium flex items-center gap-2 ${
+          saveFeedback.type === 'success' 
+            ? 'border-green-200 bg-green-50 text-green-700' 
+            : 'border-amber-200 bg-amber-50 text-amber-700'
+        }`}>
+          {saveFeedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+          <span>{saveFeedback.message}</span>
+        </div>
+      )}
 
       <AnalysisResults results={analysisResults} />
     </div>

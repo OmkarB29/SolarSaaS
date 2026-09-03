@@ -102,15 +102,40 @@ const Login = () => {
         {errors.form && <p className="text-sm text-red-500">{errors.form}</p>}
       </form>
 
-      <div className="my-6 flex items-center gap-4">
-        <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">or</span>
-        <div className="h-px flex-1 bg-slate-200" />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SocialButton icon={<span className="text-base font-bold text-slate-900">G</span>}>Google</SocialButton>
-        <SocialButton icon={<span className="text-base font-bold text-slate-900">GH</span>}>GitHub</SocialButton>
+      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2.5">
+          Quick Demo Accounts (1-Click Fill)
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setForm({ email: 'admin@solarsaas.com', password: 'Admin@12345', remember: true });
+              setErrors({});
+            }}
+            className="flex flex-col items-start p-2.5 rounded-lg border border-purple-200 bg-purple-50/60 hover:bg-purple-100/70 transition-all text-left"
+          >
+            <span className="text-xs font-bold text-purple-900 flex items-center gap-1">
+              👑 Admin Account
+            </span>
+            <span className="text-[11px] text-purple-700 truncate w-full">admin@solarsaas.com</span>
+            <span className="text-[10px] text-purple-500">Full admin dashboard access</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setForm({ email: 'user@solarsaas.com', password: 'User@12345', remember: true });
+              setErrors({});
+            }}
+            className="flex flex-col items-start p-2.5 rounded-lg border border-blue-200 bg-blue-50/60 hover:bg-blue-100/70 transition-all text-left"
+          >
+            <span className="text-xs font-bold text-blue-900 flex items-center gap-1">
+              👤 User Account
+            </span>
+            <span className="text-[11px] text-blue-700 truncate w-full">user@solarsaas.com</span>
+            <span className="text-[10px] text-blue-500">Standard rooftop workflow</span>
+          </button>
+        </div>
       </div>
 
       <p className="mt-8 text-center text-sm text-slate-500">
