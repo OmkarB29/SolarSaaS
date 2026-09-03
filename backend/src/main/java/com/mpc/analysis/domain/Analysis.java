@@ -78,6 +78,12 @@ public class Analysis {
     @Column(name = "payback_period", nullable = false)
     private Double paybackPeriod;
 
+    @Column(name = "weather_adjustment", nullable = true)
+    private Double weatherAdjustment;
+
+    @Column(name = "battery_recommendation", nullable = true)
+    private Double batteryRecommendation;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -212,6 +218,22 @@ public class Analysis {
 
     public void setPaybackPeriod(Double paybackPeriod) {
         this.paybackPeriod = paybackPeriod;
+    }
+
+    public Double getWeatherAdjustment() {
+        return weatherAdjustment;
+    }
+
+    public void setWeatherAdjustment(Double weatherAdjustment) {
+        this.weatherAdjustment = weatherAdjustment;
+    }
+
+    public Double getBatteryRecommendation() {
+        return batteryRecommendation;
+    }
+
+    public void setBatteryRecommendation(Double batteryRecommendation) {
+        this.batteryRecommendation = batteryRecommendation;
     }
 
     public Instant getCreatedAt() {

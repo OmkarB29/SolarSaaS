@@ -43,6 +43,8 @@ public class AnalysisService {
         analysis.setAnnualGeneration(defaultNumber(request.getYearlyGeneration()));
         analysis.setAnnualSavings(defaultNumber(request.getYearlySavings()));
         analysis.setPaybackPeriod(defaultNumber(request.getPaybackPeriod()));
+        analysis.setWeatherAdjustment(request.getWeatherAdjustment());
+        analysis.setBatteryRecommendation(request.getBatteryRecommendation());
 
         return toResponse(analysisRepository.save(analysis));
     }
@@ -54,6 +56,16 @@ public class AnalysisService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public AnalysisResponse getLatestUserAnalysis(String email) {
+        User user = getUser(email);
+        List<Analysis> analyses = analysisRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        if (analyses.isEmpty()) {
+            return null;
+        }
+        return toResponse(analyses.get(0));
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +86,30 @@ public class AnalysisService {
     }
 
     private AnalysisResponse toResponse(Analysis analysis) {
+        double usableArea = analysis.getUsableArea() != null && analysis.getUsableArea() > 0 
+                ? analysis.getUsableArea() 
+                : (analysis.getEstimatedPanels() != null ? analysis.getEstimatedPanels() * 2.5 : 0.0);
+
+        double systemSize = analysis.getSystemSize() != null && analysis.getSystemSize() > 0 
+                ? analysis.getSystemSize() 
+                : (analysis.getEstimatedPanels() != null ? analysis.getEstimatedPanels() * 0.4 : 0.0);
+
+        double annualGen = analysis.getAnnualGeneration() != null && analysis.getAnnualGeneration() > 0 
+                ? analysis.getAnnualGeneration() 
+                : (analysis.getMonthlyGeneration() != null ? analysis.getMonthlyGeneration() * 12.0 : 0.0);
+
+        double annualSavings = analysis.getAnnualSavings() != null && analysis.getAnnualSavings() > 0 
+                ? analysis.getAnnualSavings() 
+                : annualGen * 8.5;
+
+        double payback = analysis.getPaybackPeriod() != null && analysis.getPaybackPeriod() > 0 
+                ? analysis.getPaybackPeriod() 
+                : (annualSavings > 0 && analysis.getInstallationCost() != null ? Math.round((analysis.getInstallationCost() / annualSavings) * 10.0) / 10.0 : 4.0);
+
+        double batteryRec = analysis.getBatteryRecommendation() != null && analysis.getBatteryRecommendation() > 0
+                ? analysis.getBatteryRecommendation()
+                : (annualGen > 0 ? Math.max(10.0, Math.round((annualGen / 365.0 * 0.82 * 1.5) / 5.0) * 5.0) : 30.0);
+
         return new AnalysisResponse(
                 analysis.getId(),
                 analysis.getUser().getId(),
@@ -86,6 +122,13 @@ public class AnalysisService {
                 analysis.getInstallationCost(),
                 analysis.getRoi(),
                 analysis.getCo2Reduction(),
-                analysis.getCreatedAt());
+                analysis.getCreatedAt(),
+                usableArea,
+                systemSize,
+                annualGen,
+                annualSavings,
+                payback,
+                analysis.getWeatherAdjustment() != null ? analysis.getWeatherAdjustment() : 0.0,
+                batteryRec);
     }
 }

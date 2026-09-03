@@ -63,6 +63,10 @@ public class AnalysisRequest {
     @PositiveOrZero
     private Double paybackPeriod;
 
+    private Double weatherAdjustment;
+
+    private Double batteryRecommendation;
+
     public String getLocationName() {
         return locationName;
     }
@@ -173,5 +177,21 @@ public class AnalysisRequest {
 
     public void setPaybackPeriod(Double paybackPeriod) {
         this.paybackPeriod = paybackPeriod;
+    }
+
+    public Double getWeatherAdjustment() {
+        return weatherAdjustment;
+    }
+
+    public void setWeatherAdjustment(Double weatherAdjustment) {
+        this.weatherAdjustment = weatherAdjustment;
+    }
+
+    public Double getBatteryRecommendation() {
+        return batteryRecommendation;
+    }
+
+    public void setBatteryRecommendation(Double batteryRecommendation) {
+        this.batteryRecommendation = batteryRecommendation;
     }
 }

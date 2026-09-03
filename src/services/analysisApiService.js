@@ -69,4 +69,29 @@ export const analysisApiService = {
 
     return response.json();
   },
+
+  async getLatestAnalysis() {
+    try {
+      const response = await fetch('/api/analysis/latest', {
+        headers: getAuthHeaders(),
+      });
+
+      if (response.status === 204) {
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error(await getApiError(response));
+      }
+
+      return await response.json();
+    } catch {
+      try {
+        const list = await this.getAnalyses();
+        return list && list.length > 0 ? list[0] : null;
+      } catch {
+        return null;
+      }
+    }
+  },
 };

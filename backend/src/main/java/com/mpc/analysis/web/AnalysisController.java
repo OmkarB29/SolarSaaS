@@ -37,6 +37,15 @@ public class AnalysisController {
         return analysisService.getUserAnalyses(authentication.getName());
     }
 
+    @GetMapping("/latest")
+    public org.springframework.http.ResponseEntity<AnalysisResponse> getLatest(Authentication authentication) {
+        AnalysisResponse latest = analysisService.getLatestUserAnalysis(authentication.getName());
+        if (latest == null) {
+            return org.springframework.http.ResponseEntity.noContent().build();
+        }
+        return org.springframework.http.ResponseEntity.ok(latest);
+    }
+
     @GetMapping("/{id}")
     public AnalysisResponse get(@PathVariable Long id, Authentication authentication) {
         return analysisService.getAnalysisById(authentication.getName(), id);

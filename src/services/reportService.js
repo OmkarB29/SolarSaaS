@@ -5,37 +5,48 @@ const formatNumber = (value, maximumFractionDigits = 0) =>
 
 const formatCurrency = (value) => `INR ${formatNumber(value)}`;
 
-const getReportRows = (analysis) => [
-  ['Generated Date', new Date().toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  })],
-  ['Location', analysis.location || 'Not specified'],
-  ['Roof Area', `${formatNumber(analysis.roofArea)} m2`],
-  ['Usable Area', `${formatNumber(analysis.usableArea, 1)} m2`],
-  ['System Size', `${formatNumber(analysis.systemSize, 1)} kWp`],
-  ['Estimated Panel Count', formatNumber(analysis.panels)],
-  ['Estimated Monthly Energy', `${formatNumber(analysis.monthlyGeneration)} kWh`],
-  ...(analysis.weather && analysis.weatherAdjustedMonthlyGeneration
-    ? [['Weather Adjusted Monthly Energy', `${formatNumber(analysis.weatherAdjustedMonthlyGeneration)} kWh`]]
-    : []),
-  ...(analysis.weather
-    ? [
-        ['Weather Summary', analysis.weather.weatherSummary],
-        ['Cloud Adjustment', `${analysis.weatherAdjustmentPercent > 0 ? '+' : ''}${formatNumber(analysis.weatherAdjustmentPercent)}%`],
-      ]
-    : []),
-  ['Estimated Annual Energy', `${formatNumber(analysis.yearlyGeneration)} kWh`],
-  ...(analysis.weather && analysis.weatherAdjustedYearlyGeneration
-    ? [['Weather Adjusted Annual Energy', `${formatNumber(analysis.weatherAdjustedYearlyGeneration)} kWh`]]
-    : []),
-  ['Installation Cost', formatCurrency(analysis.installationCost)],
-  ['Projected ROI', `${formatNumber(analysis.roi, 1)}%`],
-  ['Payback Period', `${formatNumber(analysis.paybackPeriod, 1)} years`],
-  ['Estimated Savings', `${formatCurrency(analysis.yearlySavings)} per year`],
-  ['CO2 Reduction', `${formatNumber(analysis.co2Reduction)} kg per year`],
-];
+const getReportRows = (analysis) => {
+  const panelCount = analysis.panels || analysis.estimatedPanels || analysis.panelCount || 0;
+  const usable = analysis.usableArea || (panelCount * 2.5);
+  const sysSize = analysis.systemSize || Number((panelCount * 0.4).toFixed(1));
+  const annualGen = analysis.yearlyGeneration || analysis.annualGeneration || (analysis.monthlyGeneration ? analysis.monthlyGeneration * 12 : 0);
+  const savings = analysis.yearlySavings || analysis.annualSavings || (annualGen * 8.5);
+  const cost = analysis.installationCost || 0;
+  const payback = analysis.paybackPeriod || (savings > 0 ? Number((cost / savings).toFixed(1)) : 0);
+  const batteryRec = analysis.batteryRecommendation || analysis.recommendedBatteryCapacity || (
+    annualGen > 0 ? Math.max(10, Math.round((annualGen / 365 * 0.82 * 1.5) / 5) * 5) : 30
+  );
+
+  return [
+    ['Generated Date', new Date().toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })],
+    ['Location', analysis.location || analysis.locationName || 'Rooftop Site'],
+    ['Roof Area', `${formatNumber(analysis.roofArea)} m2`],
+    ['Usable Area', `${formatNumber(usable, 1)} m2`],
+    ['System Size', `${formatNumber(sysSize, 1)} kWp`],
+    ['Estimated Panel Count', `${formatNumber(panelCount)} modules`],
+    ['Estimated Monthly Energy', `${formatNumber(analysis.monthlyGeneration || Math.round(annualGen / 12))} kWh`],
+    ...(analysis.weatherAdjustment || analysis.weatherAdjustmentPercent
+      ? [['Weather Impact Factor', `${(analysis.weatherAdjustment || analysis.weatherAdjustmentPercent) > 0 ? '+' : ''}${formatNumber(analysis.weatherAdjustment || analysis.weatherAdjustmentPercent)}%`]]
+      : []),
+    ...(analysis.weather
+      ? [
+          ['Weather Summary', analysis.weather.weatherSummary],
+          ['Cloud Adjustment', `${analysis.weatherAdjustmentPercent > 0 ? '+' : ''}${formatNumber(analysis.weatherAdjustmentPercent)}%`],
+        ]
+      : []),
+    ['Estimated Annual Energy', `${formatNumber(annualGen)} kWh`],
+    ['Recommended Battery Storage', `${formatNumber(batteryRec)} kWh (LFP)`],
+    ['Installation Cost', formatCurrency(cost)],
+    ['Projected ROI', `${formatNumber(analysis.roi, 1)}%`],
+    ['Payback Period', `${formatNumber(payback, 1)} years`],
+    ['Estimated Savings', `${formatCurrency(savings)} per year`],
+    ['CO2 Reduction', `${formatNumber(analysis.co2Reduction || Math.round(annualGen * 0.82))} kg per year`],
+  ];
+};
 
 export const getLatestAnalysis = () => {
   try {
@@ -205,7 +216,7 @@ export const downloadAnalysisReport = (analysis, forecastData = null) => {
     document.setLineWidth(0.5);
     document.roundedRect(margin, y2, pageWidth - margin * 2, 21, 2, 2, 'D');
 
-    const recCap = analysis?.recommendedBatteryCapacity || (totalGen > 0 ? Math.max(15, Math.round((totalGen / 10 * 1.5) / 5) * 5) : 30);
+    const recCap = analysis?.recommendedBatteryCapacity || analysis?.batteryRecommendation || (totalGen > 0 ? Math.max(15, Math.round((totalGen / 10 * 1.5) / 5) * 5) : 30);
     const backupDays = Math.round((recCap * 0.9 / 32) * 10) / 10;
     const deficitEst = Math.round(Math.max(0, 320 - totalGen) * 10) / 10;
 
