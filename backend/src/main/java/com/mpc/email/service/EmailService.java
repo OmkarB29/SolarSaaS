@@ -34,10 +34,10 @@ public class EmailService {
     @Value("${spring.mail.port:587}")
     private int mailPort;
 
-    @Value("${spring.mail.username:#{environment.MAIL_USERNAME}}")
+    @Value("${spring.mail.username:}")
     private String mailUsername;
 
-    @Value("${spring.mail.password:#{environment.MAIL_PASSWORD}}")
+    @Value("${spring.mail.password:}")
     private String mailPassword;
 
     private final NumberFormat numberFormat = NumberFormat.getNumberInstance(new Locale("en", "IN"));
