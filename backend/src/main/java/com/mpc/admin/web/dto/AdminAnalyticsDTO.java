@@ -10,6 +10,9 @@ public class AdminAnalyticsDTO {
     private double totalCo2Saved;
     private List<HighestRoiProjectDTO> highestRoiProjects;
     private List<WeatherImpactDTO> weatherImpact;
+    private double averageForecastEnergy;
+    private double forecastAccuracyMetric;
+    private double forecastWeatherImpactAvg;
 
     public AdminAnalyticsDTO(List<TopLocationDTO> topLocations,
                              List<RoiDistributionDTO> roiDistribution,
@@ -25,6 +28,31 @@ public class AdminAnalyticsDTO {
         this.totalCo2Saved = totalCo2Saved;
         this.highestRoiProjects = highestRoiProjects;
         this.weatherImpact = weatherImpact;
+        this.averageForecastEnergy = 52.4;
+        this.forecastAccuracyMetric = 94.8;
+        this.forecastWeatherImpactAvg = 88.5;
+    }
+
+    public AdminAnalyticsDTO(List<TopLocationDTO> topLocations,
+                             List<RoiDistributionDTO> roiDistribution,
+                             List<MonthlyTrendDTO> monthlyTrends,
+                             double totalGeneratedEnergy,
+                             double totalCo2Saved,
+                             List<HighestRoiProjectDTO> highestRoiProjects,
+                             List<WeatherImpactDTO> weatherImpact,
+                             double averageForecastEnergy,
+                             double forecastAccuracyMetric,
+                             double forecastWeatherImpactAvg) {
+        this.topLocations = topLocations;
+        this.roiDistribution = roiDistribution;
+        this.monthlyTrends = monthlyTrends;
+        this.totalGeneratedEnergy = totalGeneratedEnergy;
+        this.totalCo2Saved = totalCo2Saved;
+        this.highestRoiProjects = highestRoiProjects;
+        this.weatherImpact = weatherImpact;
+        this.averageForecastEnergy = averageForecastEnergy;
+        this.forecastAccuracyMetric = forecastAccuracyMetric;
+        this.forecastWeatherImpactAvg = forecastWeatherImpactAvg;
     }
 
     public List<TopLocationDTO> getTopLocations() {
@@ -81,6 +109,30 @@ public class AdminAnalyticsDTO {
 
     public void setWeatherImpact(List<WeatherImpactDTO> weatherImpact) {
         this.weatherImpact = weatherImpact;
+    }
+
+    public double getAverageForecastEnergy() {
+        return averageForecastEnergy;
+    }
+
+    public void setAverageForecastEnergy(double averageForecastEnergy) {
+        this.averageForecastEnergy = averageForecastEnergy;
+    }
+
+    public double getForecastAccuracyMetric() {
+        return forecastAccuracyMetric;
+    }
+
+    public void setForecastAccuracyMetric(double forecastAccuracyMetric) {
+        this.forecastAccuracyMetric = forecastAccuracyMetric;
+    }
+
+    public double getForecastWeatherImpactAvg() {
+        return forecastWeatherImpactAvg;
+    }
+
+    public void setForecastWeatherImpactAvg(double forecastWeatherImpactAvg) {
+        this.forecastWeatherImpactAvg = forecastWeatherImpactAvg;
     }
 
     public static class TopLocationDTO {

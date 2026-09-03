@@ -5,6 +5,7 @@ import { Table } from '../components/ui/Table';
 import { analysisApiService } from '../services/analysisApiService';
 import { reportApiService } from '../services/reportApiService';
 import { downloadAnalysisReport } from '../services/reportService';
+import ForecastSection from '../components/forecast/ForecastSection';
 
 const formatNumber = (value, digits = 0) =>
   new Intl.NumberFormat('en-IN', {
@@ -204,6 +205,11 @@ const AnalysisHistory = () => {
                 {formatNumber(selectedAnalysis.monthlyGeneration)} kWh
               </p>
             </div>
+          </div>
+
+          {/* 10-Day Forecast Snapshot */}
+          <div className="mt-8 pt-6 border-t border-slate-200">
+            <ForecastSection analysis={selectedAnalysis} />
           </div>
         </Card>
       )}

@@ -22,6 +22,7 @@ import StatCard from '../components/ui/StatCard';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
 import { downloadAnalysisReport, getLatestAnalysis } from '../services/reportService';
+import ForecastSection from '../components/forecast/ForecastSection';
 
 const monthlyEnergyData = [
   { name: 'Jan', value: 400 },
@@ -207,6 +208,9 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* 10-Day Energy Forecast Section */}
+      <ForecastSection analysis={latestAnalysis} />
     </div>
   );
 };
