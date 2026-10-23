@@ -67,7 +67,19 @@ const formatNumber = (value, maximumFractionDigits = 0) =>
   new Intl.NumberFormat('en-IN', { maximumFractionDigits }).format(value);
 
 const Dashboard = () => {
-  const [latestAnalysis] = useState(() => getLatestAnalysis());
+  const [latestAnalysis, setLatestAnalysis] = useState(() => getLatestAnalysis());
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setLatestAnalysis(getLatestAnalysis());
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('solarscope:analysis-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('solarscope:analysis-updated', handleUpdate);
+    };
+  }, []);
   const [workspaceSummary, setWorkspaceSummary] = useState({
     totalAnalyses: 0,
     totalProposals: 0,

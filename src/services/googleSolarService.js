@@ -23,8 +23,12 @@ const normalizeInsights = (data, quality = 'HIGH') => ({
   panelHeightMeters: data.solarPotential?.panelHeightMeters || 1.88,
   panelWidthMeters: data.solarPotential?.panelWidthMeters || 1.05,
   panelLifetimeYears: data.solarPotential?.panelLifetimeYears || 20,
+  wholeRoofStats: data.solarPotential?.wholeRoofStats || null,
+  buildingStats: data.solarPotential?.buildingStats || null,
   roofSegmentStats: data.solarPotential?.roofSegmentStats || [],
   solarPanels: data.solarPotential?.solarPanels || [],
+  solarPanelConfigs: data.solarPotential?.solarPanelConfigs || [],
+  financialAnalyses: data.solarPotential?.financialAnalyses || [],
   raw: data,
 });
 
@@ -85,7 +89,6 @@ export const googleSolarService = {
           return normalizeInsights(data, quality);
         }
 
-        // Try lower quality if 404 (location outside current tier coverage)
         if (response.status === 404) {
           continue;
         }

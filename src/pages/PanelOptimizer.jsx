@@ -162,6 +162,31 @@ const PanelOptimizer = () => {
 
   // Run initial optimization when polygon is available
   useEffect(() => {
+    const handleUpdate = () => {
+      const updated = getStoredRooftop() || getStoredAnalysis();
+      if (updated) {
+        const rawCoords = updated.polygonCoordinates || updated.polygonCoordinatesJson;
+        const poly = normalizePolygon(typeof rawCoords === 'string' ? JSON.parse(rawCoords) : rawCoords);
+        if (poly && poly.length >= 3) {
+          setPolygonCoordinates(poly);
+        }
+        if (updated.address || updated.location || updated.locationName) {
+          setAddress(updated.address || updated.location || updated.locationName);
+        }
+        if (updated.latitude) setLatitude(updated.latitude);
+        if (updated.longitude) setLongitude(updated.longitude);
+        if (updated.roofArea || updated.area) setRoofArea(updated.roofArea || updated.area);
+      }
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('solarscope:analysis-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('solarscope:analysis-updated', handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (polygonCoordinates && polygonCoordinates.length >= 3) {
       fetchOptimizedLayouts(polygonCoordinates, dimensions);
     }

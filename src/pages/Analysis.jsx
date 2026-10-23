@@ -55,6 +55,22 @@ const Analysis = () => {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  useEffect(() => {
+    const handleUpdate = () => {
+      const latest = getLatestAnalysis();
+      if (latest) {
+        setAnalysis(latest);
+        setIsLoading(false);
+      }
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('solarscope:analysis-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('solarscope:analysis-updated', handleUpdate);
+    };
+  }, []);
+
   // Load user's analysis from location.state or latest saved analysis from backend
   useEffect(() => {
     let isMounted = true;

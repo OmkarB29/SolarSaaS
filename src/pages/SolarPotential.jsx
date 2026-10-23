@@ -182,6 +182,27 @@ const SolarPotential = () => {
   };
 
   useEffect(() => {
+    const handleUpdate = () => {
+      const updated = getStoredRooftop() || getStoredAnalysis();
+      if (updated) {
+        if (updated.latitude) setLatitude(updated.latitude);
+        if (updated.longitude) setLongitude(updated.longitude);
+        if (updated.address || updated.location || updated.locationName) {
+          setAddress(updated.address || updated.location || updated.locationName);
+        }
+        if (updated.polygonCoordinates) setPolygonCoordinates(updated.polygonCoordinates);
+        if (updated.roofArea || updated.area) setRoofArea(updated.roofArea || updated.area);
+      }
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('solarscope:analysis-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('solarscope:analysis-updated', handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (latitude && longitude) {
       fetchSolarPotential(latitude, longitude, roofArea, address);
     } else {

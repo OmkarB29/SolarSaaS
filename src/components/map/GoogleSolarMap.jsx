@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { loadGoogleMapsSdk, resetGoogleMapsLoader } from '../../services/googleMapsLoader';
 import { useSolarFluxOverlay } from './useSolarFluxOverlay';
 import LeafletSatelliteFallback from './LeafletSatelliteFallback';
-import { Layers, Eye, EyeOff, RotateCcw, AlertTriangle, X, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { Layers, Eye, EyeOff, RotateCcw, AlertTriangle, X, HelpCircle, CheckCircle2, Check, Undo2 } from 'lucide-react';
 
 const DEFAULT_CENTER = { lat: 12.9716, lng: 77.5946 }; // Bengaluru Default
 
@@ -19,6 +19,10 @@ export const GoogleSolarMap = ({
   onMapClick,
   onBoundsChange,
   isDrawingEnabled = false,
+  onCancelDrawing,
+  solarPanels = [],
+  showSolarPanels = true,
+  panelLimit = 100,
   showFluxOverlay: initialFlux = false,
   fluxBounds = null,
   className = 'h-full w-full',
@@ -27,7 +31,9 @@ export const GoogleSolarMap = ({
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const polygonRef = useRef(null);
-  const drawingManagerRef = useRef(null);
+  const drawingPolylineRef = useRef(null);
+  const drawingMarkersRef = useRef([]);
+  const solarPanelPolygonsRef = useRef([]);
 
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -40,6 +46,9 @@ export const GoogleSolarMap = ({
     apiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
   );
   const [tempApiKeyInput, setTempApiKeyInput] = useState('');
+
+  // Interactive Rooftop Drawing State (Corner-by-corner)
+  const [activeDrawingPoints, setActiveDrawingPoints] = useState([]);
 
   // Intercept Google Maps auth failure (ApiTargetBlockedMapError, etc.)
   useEffect(() => {
@@ -112,16 +121,6 @@ export const GoogleSolarMap = ({
 
       mapRef.current = map;
 
-      // Coordinate state handler: Map Click
-      const clickListener = map.addListener('click', (e) => {
-        if (!e.latLng) return;
-        const lat = e.latLng.lat();
-        const lng = e.latLng.lng();
-        if (onMapClick) {
-          onMapClick({ lat, lng, latLngBounds: map.getBounds() });
-        }
-      });
-
       // Coordinate state handler: Idle
       const idleListener = map.addListener('idle', () => {
         if (onBoundsChange) {
@@ -142,7 +141,6 @@ export const GoogleSolarMap = ({
       });
 
       return () => {
-        window.google.maps.event.removeListener(clickListener);
         window.google.maps.event.removeListener(idleListener);
         window.google.maps.event.clearInstanceListeners(map);
         mapRef.current = null;
@@ -153,7 +151,122 @@ export const GoogleSolarMap = ({
     }
   }, [isSdkReady, authBlockedError, mapId]);
 
-  // 3. Camera Sync: Bounds & Center
+  // 3. Map Click Handler (Dispatches between Drawing Mode vs Site Pin Selection)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || authBlockedError) return;
+
+    // Set cursor style depending on drawing mode
+    map.setOptions({
+      draggableCursor: isDrawingEnabled ? 'crosshair' : null,
+    });
+
+    const clickListener = map.addListener('click', (e) => {
+      if (!e.latLng) return;
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+
+      if (isDrawingEnabled) {
+        // Point-and-click rooftop outline
+        setActiveDrawingPoints((prev) => [...prev, [lat, lng]]);
+      } else {
+        // Site re-targeting pin
+        if (onMapClick) {
+          onMapClick({ lat, lng, latLngBounds: map.getBounds() });
+        }
+      }
+    });
+
+    return () => {
+      window.google.maps.event.removeListener(clickListener);
+    };
+  }, [isDrawingEnabled, onMapClick, authBlockedError]);
+
+  // 4. Live Polyline & Vertex Badges during Drawing Mode
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || authBlockedError || !window.google?.maps) return;
+
+    // Clear old drawing visual elements
+    if (drawingPolylineRef.current) {
+      drawingPolylineRef.current.setMap(null);
+      drawingPolylineRef.current = null;
+    }
+    drawingMarkersRef.current.forEach((m) => {
+      try { m.setMap(null); } catch {}
+    });
+    drawingMarkersRef.current = [];
+
+    if (!isDrawingEnabled || activeDrawingPoints.length === 0) return;
+
+    const path = activeDrawingPoints.map(([lat, lng]) => ({ lat, lng }));
+
+    // Draw connecting line between selected rooftop corners
+    const polyline = new window.google.maps.Polyline({
+      path,
+      strokeColor: '#3b82f6', // Google Blue
+      strokeOpacity: 0.95,
+      strokeWeight: 3,
+      map,
+      zIndex: 100,
+    });
+    drawingPolylineRef.current = polyline;
+
+    // Render vertex dots for each corner
+    activeDrawingPoints.forEach(([lat, lng], idx) => {
+      const marker = new window.google.maps.Marker({
+        position: { lat, lng },
+        map,
+        label: {
+          text: String(idx + 1),
+          color: '#ffffff',
+          fontSize: '11px',
+          fontWeight: 'bold',
+        },
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#2563eb',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        },
+        zIndex: 101,
+      });
+      drawingMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      if (drawingPolylineRef.current) {
+        drawingPolylineRef.current.setMap(null);
+        drawingPolylineRef.current = null;
+      }
+      drawingMarkersRef.current.forEach((m) => {
+        try { m.setMap(null); } catch {}
+      });
+      drawingMarkersRef.current = [];
+    };
+  }, [isDrawingEnabled, activeDrawingPoints, authBlockedError]);
+
+  // Complete & commit manual rooftop outline
+  const handleFinishRooftopOutline = useCallback(() => {
+    if (activeDrawingPoints.length < 3) return;
+    if (onPolygonChange) {
+      onPolygonChange(activeDrawingPoints);
+    }
+    setActiveDrawingPoints([]);
+  }, [activeDrawingPoints, onPolygonChange]);
+
+  const handleUndoPoint = () => {
+    setActiveDrawingPoints((prev) => prev.slice(0, -1));
+  };
+
+  const handleCancelDrawing = () => {
+    setActiveDrawingPoints([]);
+    if (onCancelDrawing) onCancelDrawing();
+  };
+
+  // 5. Camera Sync: Bounds & Center
   useEffect(() => {
     const map = mapRef.current;
     if (!map || authBlockedError) return;
@@ -175,7 +288,7 @@ export const GoogleSolarMap = ({
     }
   }, [center, bounds, authBlockedError]);
 
-  // 4. Marker Overlay
+  // 6. Marker Overlay (Target Installation Pin)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || authBlockedError || !markerPosition) {
@@ -183,9 +296,7 @@ export const GoogleSolarMap = ({
         try {
           if (markerRef.current.map !== undefined) markerRef.current.map = null;
           if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
-        } catch {
-          // ignore
-        }
+        } catch {}
         markerRef.current = null;
       }
       return;
@@ -199,9 +310,7 @@ export const GoogleSolarMap = ({
       try {
         if (markerRef.current.map !== undefined) markerRef.current.map = null;
         if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
-      } catch {
-        // ignore
-      }
+      } catch {}
       markerRef.current = null;
     }
 
@@ -248,34 +357,26 @@ export const GoogleSolarMap = ({
         });
         markerRef.current = classicMarker;
       }
-    } catch {
-      // Safe fallback ignore
-    }
+    } catch {}
 
     return () => {
       if (markerRef.current) {
         try {
           if (markerRef.current.map !== undefined) markerRef.current.map = null;
           if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
-        } catch {
-          // ignore
-        }
+        } catch {}
         markerRef.current = null;
       }
     };
   }, [markerPosition, markerLabel, authBlockedError]);
 
-  // 5. Render Rooftop Polygon Overlay
+  // 7. Render Committed Rooftop Boundary Polygon (Google Blue / Solar Amber)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || authBlockedError || !window.google?.maps) return;
 
     if (polygonRef.current) {
-      try {
-        polygonRef.current.setMap(null);
-      } catch {
-        // ignore
-      }
+      try { polygonRef.current.setMap(null); } catch {}
       polygonRef.current = null;
     }
 
@@ -288,11 +389,11 @@ export const GoogleSolarMap = ({
 
       const polygon = new window.google.maps.Polygon({
         paths: path,
-        strokeColor: '#f59e0b',
+        strokeColor: '#2563eb', // Google Solar Blue
         strokeOpacity: 0.95,
-        strokeWeight: 3,
-        fillColor: '#f59e0b',
-        fillOpacity: 0.32,
+        strokeWeight: 3.5,
+        fillColor: '#3b82f6',
+        fillOpacity: 0.22,
         editable: false,
         draggable: false,
         zIndex: 50,
@@ -300,101 +401,79 @@ export const GoogleSolarMap = ({
 
       polygon.setMap(map);
       polygonRef.current = polygon;
-    } catch {
-      // Safe ignore
+
+      // Auto-fit camera to the rooftop polygon
+      const polyBounds = new window.google.maps.LatLngBounds();
+      path.forEach((coord) => polyBounds.extend(coord));
+      map.fitBounds(polyBounds, 40);
+    } catch (err) {
+      console.warn('[GoogleSolarMap] Polygon draw error:', err);
     }
 
     return () => {
       if (polygonRef.current) {
-        try {
-          polygonRef.current.setMap(null);
-        } catch {
-          // ignore
-        }
+        try { polygonRef.current.setMap(null); } catch {}
         polygonRef.current = null;
       }
     };
   }, [polygonCoordinates, authBlockedError]);
 
-  // 6. Drawing Manager: Rooftop Polygons
+  // 8. Render Individual Google Solar Panels on the Roof (Google Solar Demo feature)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || authBlockedError || !window.google?.maps?.drawing) return;
+    if (!map || authBlockedError || !window.google?.maps) return;
 
-    if (!isDrawingEnabled) {
-      if (drawingManagerRef.current) {
-        try {
-          drawingManagerRef.current.setMap(null);
-        } catch {
-          // ignore
-        }
-        drawingManagerRef.current = null;
-      }
-      return;
-    }
+    // Clear previous panel overlays
+    solarPanelPolygonsRef.current.forEach((poly) => {
+      try { poly.setMap(null); } catch {}
+    });
+    solarPanelPolygonsRef.current = [];
 
-    try {
-      const dm = new window.google.maps.drawing.DrawingManager({
-        drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
-        drawingControl: true,
-        drawingControlOptions: {
-          position: window.google.maps.ControlPosition.TOP_RIGHT,
-          drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
-        },
-        polygonOptions: {
-          fillColor: '#f59e0b',
-          fillOpacity: 0.35,
-          strokeColor: '#f59e0b',
-          strokeWeight: 3,
-          clickable: true,
-          editable: true,
-          zIndex: 60,
-        },
+    if (!showSolarPanels || !solarPanels || solarPanels.length === 0) return;
+
+    const panelsToRender = solarPanels.slice(0, panelLimit || solarPanels.length);
+
+    // Render each panel as a compact solar rectangle
+    panelsToRender.forEach((panel) => {
+      if (!panel.center) return;
+      const lat = panel.center.latitude;
+      const lng = panel.center.longitude;
+
+      // Approximate standard panel dimensions (1.8m x 1.0m in lat/lng deltas)
+      const latDelta = 0.000008;
+      const lngDelta = 0.000005;
+
+      const panelBox = [
+        { lat: lat + latDelta, lng: lng - lngDelta },
+        { lat: lat + latDelta, lng: lng + lngDelta },
+        { lat: lat - latDelta, lng: lng + lngDelta },
+        { lat: lat - latDelta, lng: lng - lngDelta },
+      ];
+
+      try {
+        const panelPoly = new window.google.maps.Polygon({
+          paths: panelBox,
+          strokeColor: '#1e3a8a',
+          strokeWeight: 1,
+          fillColor: '#2563eb', // Vibrant Solar Blue
+          fillOpacity: 0.85,
+          map,
+          zIndex: 80,
+        });
+
+        solarPanelPolygonsRef.current.push(panelPoly);
+      } catch {}
+    });
+
+    return () => {
+      solarPanelPolygonsRef.current.forEach((poly) => {
+        try { poly.setMap(null); } catch {}
       });
+      solarPanelPolygonsRef.current = [];
+    };
+  }, [solarPanels, showSolarPanels, panelLimit, authBlockedError]);
 
-      dm.setMap(map);
-      drawingManagerRef.current = dm;
-
-      const completeListener = window.google.maps.event.addListener(
-        dm,
-        'overlaycomplete',
-        (event) => {
-          if (event.type === window.google.maps.drawing.OverlayType.POLYGON) {
-            const drawnPoly = event.overlay;
-            const vertices = drawnPoly.getPath();
-            const coords = [];
-            for (let i = 0; i < vertices.getLength(); i++) {
-              const pt = vertices.getAt(i);
-              coords.push([pt.lat(), pt.lng()]);
-            }
-
-            if (onPolygonChange) {
-              onPolygonChange(coords);
-            }
-
-            drawnPoly.setMap(null);
-            dm.setDrawingMode(null);
-          }
-        }
-      );
-
-      return () => {
-        window.google.maps.event.removeListener(completeListener);
-        if (drawingManagerRef.current) {
-          try {
-            drawingManagerRef.current.setMap(null);
-          } catch {
-            // ignore
-          }
-          drawingManagerRef.current = null;
-        }
-      };
-    } catch {
-      // Safe ignore
-    }
-  }, [isDrawingEnabled, onPolygonChange, authBlockedError]);
-
-  // 7. Calculate or use fluxBounds for Solar Flux Overlay Hook
+  // 9. Solar Flux Heatmap Overlay
   const effectiveFluxBounds = React.useMemo(() => {
     if (fluxBounds) return fluxBounds;
     if (polygonCoordinates && polygonCoordinates.length >= 3) {
@@ -488,11 +567,9 @@ export const GoogleSolarMap = ({
   }
 
   // If Key is Blocked by Google Cloud (ApiTargetBlockedMapError):
-  // Gracefully fallback to High-Resolution Satellite Map (Leaflet) with clear banner!
   if (authBlockedError) {
     return (
       <div className={`relative ${className} overflow-hidden`}>
-        {/* Top Warning & Status Banner */}
         <div className="absolute top-3 left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/90 border border-amber-500/50 px-3.5 py-2 text-xs text-white shadow-xl backdrop-blur-md">
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
@@ -520,7 +597,6 @@ export const GoogleSolarMap = ({
           </div>
         </div>
 
-        {/* Instructions Modal if user clicks for guide */}
         {showInstructionsModal && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
             <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-700 p-6 text-white shadow-2xl relative">
@@ -574,7 +650,6 @@ export const GoogleSolarMap = ({
           </div>
         )}
 
-        {/* High-Resolution Satellite Fallback with Drawing & Polygon Support */}
         <LeafletSatelliteFallback
           center={center}
           bounds={bounds}
@@ -604,6 +679,50 @@ export const GoogleSolarMap = ({
               Loading Google Satellite Imagery...
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Interactive Rooftop Drawing Toolbar Overlay */}
+      {isDrawingEnabled && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-40 flex items-center gap-2 bg-slate-950/90 border border-blue-500/70 text-white px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md text-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 pr-2 border-r border-slate-700">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping" />
+            <span className="font-bold text-blue-400">Rooftop Outline Mode:</span>
+            <span className="text-slate-300">
+              {activeDrawingPoints.length === 0
+                ? 'Click on the map to place corner 1'
+                : `${activeDrawingPoints.length} corner${activeDrawingPoints.length > 1 ? 's' : ''} placed`}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleUndoPoint}
+            disabled={activeDrawingPoints.length === 0}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-medium transition-colors cursor-pointer"
+          >
+            <Undo2 size={13} />
+            <span>Undo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleFinishRooftopOutline}
+            disabled={activeDrawingPoints.length < 3}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-white transition-all shadow-md shadow-blue-500/30 cursor-pointer"
+          >
+            <Check size={14} />
+            <span>Complete Rooftop ({activeDrawingPoints.length >= 3 ? 'Ready' : 'Need 3+ pts'})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCancelDrawing}
+            className="flex items-center px-2 py-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title="Cancel Drawing"
+          >
+            <X size={15} />
+          </button>
         </div>
       )}
 
