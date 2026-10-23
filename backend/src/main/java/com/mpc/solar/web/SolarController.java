@@ -1,5 +1,7 @@
 package com.mpc.solar.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.mpc.solar.service.SolarApiService;
 import com.mpc.solar.service.SolarPotentialService;
 import com.mpc.solar.web.dto.SolarPotentialDTO;
 import com.mpc.solar.web.dto.SolarPotentialSaveRequest;
@@ -23,9 +25,21 @@ import java.util.List;
 public class SolarController {
 
     private final SolarPotentialService solarPotentialService;
+    private final SolarApiService solarApiService;
 
-    public SolarController(SolarPotentialService solarPotentialService) {
+    public SolarController(SolarPotentialService solarPotentialService,
+                           SolarApiService solarApiService) {
         this.solarPotentialService = solarPotentialService;
+        this.solarApiService = solarApiService;
+    }
+
+    /**
+     * Proxies Google Solar API Building Insights using backend-secured API key.
+     */
+    @GetMapping("/building-insights")
+    public JsonNode getBuildingInsights(@RequestParam double latitude,
+                                        @RequestParam double longitude) {
+        return solarApiService.fetchBuildingInsights(latitude, longitude);
     }
 
     /**
