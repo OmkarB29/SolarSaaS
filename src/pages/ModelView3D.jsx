@@ -343,14 +343,18 @@ const ModelView3D = () => {
       return;
     }
 
-    // Check multiple candidate locations for panel arrays
+    // Check multiple candidate locations for panel arrays safely
     const analysisData = getStoredAnalysis();
-    const candidatePanels =
-      rooftopData.panels ||
-      rooftopData.googleSolarData?.panels ||
-      rooftopData.googleSolarData?.solarPanels ||
-      analysisData?.panels ||
-      [];
+    let candidatePanels = [];
+    if (Array.isArray(rooftopData.panels)) {
+      candidatePanels = rooftopData.panels;
+    } else if (Array.isArray(rooftopData.googleSolarData?.solarPanels)) {
+      candidatePanels = rooftopData.googleSolarData.solarPanels;
+    } else if (Array.isArray(rooftopData.googleSolarData?.panels)) {
+      candidatePanels = rooftopData.googleSolarData.panels;
+    } else if (Array.isArray(analysisData?.panels)) {
+      candidatePanels = analysisData.panels;
+    }
 
     setIsLoading(true);
     setError('');
