@@ -1,3 +1,5 @@
+import { apiUrl } from './apiConfig';
+
 const AUTH_KEY = 'solarscope.auth';
 const SESSION_KEY = 'solarscope.session';
 
@@ -70,7 +72,7 @@ export const authService = {
   },
 
   async login({ email, password, remember }) {
-    const loginResponse = await requestJson('/api/auth/login', {
+    const loginResponse = await requestJson(apiUrl('/api/auth/login'), {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -98,11 +100,11 @@ export const authService = {
   },
 
   async signup({ fullName, email, password }) {
-    await requestJson('/api/auth/register', {
+    await requestJson(apiUrl('/api/auth/register'), {
       method: 'POST',
       body: JSON.stringify({ name: fullName, email, password }),
     });
-    const loginResponse = await requestJson('/api/auth/login', {
+    const loginResponse = await requestJson(apiUrl('/api/auth/login'), {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });

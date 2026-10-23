@@ -48,4 +48,9 @@ public class ReportController {
     public void delete(@PathVariable Long id, Authentication authentication) {
         reportService.deleteReport(authentication.getName(), id);
     }
+
+    @PostMapping("/{id}/resend-email")
+    public ReportResponse resendEmail(@PathVariable Long id, Authentication authentication) {
+        return reportService.resendReportEmail(authentication.getName(), id);
+    }
 }

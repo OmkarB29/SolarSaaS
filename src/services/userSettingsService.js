@@ -1,3 +1,5 @@
+import { apiUrl } from './apiConfig';
+
 const getAuthHeaders = () => {
   const authKey = 'solarscope.auth';
   const sessionKey = 'solarscope.session';
@@ -21,7 +23,7 @@ const getApiError = async (response) => {
 
 export const userSettingsService = {
   async getSettings() {
-    const response = await fetch('/api/user/settings', {
+    const response = await fetch(apiUrl('/api/user/settings'), {
       headers: getAuthHeaders(),
     });
 
@@ -33,7 +35,7 @@ export const userSettingsService = {
   },
 
   async updateSettings(payload) {
-    const response = await fetch('/api/user/settings', {
+    const response = await fetch(apiUrl('/api/user/settings'), {
       method: 'PATCH',
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
@@ -47,7 +49,7 @@ export const userSettingsService = {
   },
 
   async getEmailHistory() {
-    const response = await fetch('/api/email/history', {
+    const response = await fetch(apiUrl('/api/email/history'), {
       headers: getAuthHeaders(),
     });
 

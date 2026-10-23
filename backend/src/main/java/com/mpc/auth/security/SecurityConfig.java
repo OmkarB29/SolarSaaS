@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/analysis/**", "/api/reports/**", "/api/financial/**").authenticated()
+                        .requestMatchers("/api/analysis/**", "/api/reports/**", "/api/financial/**", "/api/proposals/**", "/api/solar/**", "/api/ai/**", "/api/panel-optimizer/**").authenticated()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)

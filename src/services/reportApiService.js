@@ -1,3 +1,5 @@
+import { apiUrl } from './apiConfig';
+
 const getApiError = async (response) => {
   try {
     const body = await response.json();
@@ -33,7 +35,7 @@ const getAuthHeaders = () => {
 
 export const reportApiService = {
   async saveReport(report) {
-    const response = await fetch('/api/reports', {
+    const response = await fetch(apiUrl('/api/reports'), {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(report),
@@ -47,7 +49,7 @@ export const reportApiService = {
   },
 
   async getReports() {
-    const response = await fetch('/api/reports', {
+    const response = await fetch(apiUrl('/api/reports'), {
       headers: getAuthHeaders(),
     });
 
@@ -59,7 +61,7 @@ export const reportApiService = {
   },
 
   async getReportById(id) {
-    const response = await fetch(`/api/reports/${id}`, {
+    const response = await fetch(apiUrl(`/api/reports/${id}`), {
       headers: getAuthHeaders(),
     });
 
@@ -71,7 +73,7 @@ export const reportApiService = {
   },
 
   async deleteReport(id) {
-    const response = await fetch(`/api/reports/${id}`, {
+    const response = await fetch(apiUrl(`/api/reports/${id}`), {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -79,5 +81,18 @@ export const reportApiService = {
     if (!response.ok) {
       throw new Error(await getApiError(response));
     }
+  },
+
+  async resendEmail(id) {
+    const response = await fetch(apiUrl(`/api/reports/${id}/resend-email`), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(await getApiError(response));
+    }
+
+    return response.json();
   },
 };

@@ -76,6 +76,42 @@ public class AnalysisService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Analysis not found"));
     }
 
+    @Transactional
+    public AnalysisResponse duplicateAnalysis(String email, Long id) {
+        User user = getUser(email);
+        Analysis original = analysisRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Analysis not found"));
+
+        Analysis copy = new Analysis();
+        copy.setUser(user);
+        copy.setLocationName(original.getLocationName() + " (Copy)");
+        copy.setLatitude(original.getLatitude());
+        copy.setLongitude(original.getLongitude());
+        copy.setRoofArea(original.getRoofArea());
+        copy.setUsableArea(original.getUsableArea());
+        copy.setEstimatedPanels(original.getEstimatedPanels());
+        copy.setMonthlyGeneration(original.getMonthlyGeneration());
+        copy.setSystemSize(original.getSystemSize());
+        copy.setAnnualGeneration(original.getAnnualGeneration());
+        copy.setInstallationCost(original.getInstallationCost());
+        copy.setAnnualSavings(original.getAnnualSavings());
+        copy.setRoi(original.getRoi());
+        copy.setCo2Reduction(original.getCo2Reduction());
+        copy.setPaybackPeriod(original.getPaybackPeriod());
+        copy.setWeatherAdjustment(original.getWeatherAdjustment());
+        copy.setBatteryRecommendation(original.getBatteryRecommendation());
+
+        return toResponse(analysisRepository.save(copy));
+    }
+
+    @Transactional
+    public void deleteAnalysis(String email, Long id) {
+        User user = getUser(email);
+        Analysis analysis = analysisRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Analysis not found"));
+        analysisRepository.delete(analysis);
+    }
+
     private User getUser(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user not found"));

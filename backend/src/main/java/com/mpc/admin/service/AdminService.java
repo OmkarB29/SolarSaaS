@@ -40,19 +40,37 @@ public class AdminService {
     private final ForecastRepository forecastRepository;
     private final BatteryPlanRepository batteryPlanRepository;
     private final com.mpc.email.repository.EmailHistoryRepository emailHistoryRepository;
+    private final com.mpc.proposal.repository.ProposalRepository proposalRepository;
+    private final com.mpc.solar.repository.SolarPotentialRepository solarPotentialRepository;
+    private final com.mpc.ai.repository.AIRecommendationRepository aiRecommendationRepository;
+    private final com.mpc.ai.service.AIRecommendationService aiRecommendationService;
+    private final com.mpc.paneloptimizer.repository.PanelLayoutRepository panelLayoutRepository;
+    private final com.mpc.paneloptimizer.service.PanelOptimizerService panelOptimizerService;
 
     public AdminService(UserRepository userRepository,
                         AnalysisRepository analysisRepository,
                         ReportRepository reportRepository,
                         ForecastRepository forecastRepository,
                         BatteryPlanRepository batteryPlanRepository,
-                        com.mpc.email.repository.EmailHistoryRepository emailHistoryRepository) {
+                        com.mpc.email.repository.EmailHistoryRepository emailHistoryRepository,
+                        com.mpc.proposal.repository.ProposalRepository proposalRepository,
+                        com.mpc.solar.repository.SolarPotentialRepository solarPotentialRepository,
+                        com.mpc.ai.repository.AIRecommendationRepository aiRecommendationRepository,
+                        com.mpc.ai.service.AIRecommendationService aiRecommendationService,
+                        com.mpc.paneloptimizer.repository.PanelLayoutRepository panelLayoutRepository,
+                        com.mpc.paneloptimizer.service.PanelOptimizerService panelOptimizerService) {
         this.userRepository = userRepository;
         this.analysisRepository = analysisRepository;
         this.reportRepository = reportRepository;
         this.forecastRepository = forecastRepository;
         this.batteryPlanRepository = batteryPlanRepository;
         this.emailHistoryRepository = emailHistoryRepository;
+        this.proposalRepository = proposalRepository;
+        this.solarPotentialRepository = solarPotentialRepository;
+        this.aiRecommendationRepository = aiRecommendationRepository;
+        this.aiRecommendationService = aiRecommendationService;
+        this.panelLayoutRepository = panelLayoutRepository;
+        this.panelOptimizerService = panelOptimizerService;
     }
 
     public AdminDashboardDTO getDashboardStats() {
@@ -81,8 +99,136 @@ public class AdminService {
                 .distinct()
                 .count();
 
-        return new AdminDashboardDTO(totalUsers, totalAnalyses, totalReports,
-                averageROI, totalAnnualGeneration, totalCo2Reduction, activeUsersThisMonth);
+        long totalProposals = proposalRepository.count();
+        long proposalsApproved = proposalRepository.countByStatus(com.mpc.proposal.domain.ProposalStatus.APPROVED);
+        double approvalRate = totalProposals > 0 ? Math.round(((double) proposalsApproved / totalProposals * 100.0) * 10.0) / 10.0 : 0.0;
+        long proposalsInstalled = proposalRepository.countByStatus(com.mpc.proposal.domain.ProposalStatus.INSTALLED);
+        double installationRate = totalProposals > 0 ? Math.round(((double) proposalsInstalled / totalProposals * 100.0) * 10.0) / 10.0 : 0.0;
+
+        AdminDashboardDTO dto = new AdminDashboardDTO(totalUsers, totalAnalyses, totalReports,
+                averageROI, totalAnnualGeneration, totalCo2Reduction, activeUsersThisMonth,
+                totalProposals, proposalsApproved, approvalRate, proposalsInstalled, installationRate);
+
+        // Solar Potential Module Stats
+        long totalSolar = solarPotentialRepository.count();
+        dto.setTotalSolarAnalyses(totalSolar);
+        Double avgSolarScore = solarPotentialRepository.findAverageSolarScore();
+        dto.setAverageSolarScore(avgSolarScore != null ? Math.round(avgSolarScore * 10.0) / 10.0 : 0.0);
+
+        Double maxEnergy = solarPotentialRepository.findTopByOrderByAnnualGenerationKwhDesc()
+                .map(com.mpc.solar.domain.SolarPotential::getAnnualGenerationKwh)
+                .orElse(0.0);
+        dto.setHighestEnergyRooftop(maxEnergy);
+
+        Double highestRated = solarPotentialRepository.findTopByOrderBySolarScoreDesc()
+                .map(com.mpc.solar.domain.SolarPotential::getSolarScore)
+                .orElse(0.0);
+        dto.setHighestRatedRooftop(highestRated != null ? highestRated : 0.0);
+
+        Double totalSolarEnergy = solarPotentialRepository.findTotalAnnualEnergy();
+        dto.setTotalSolarAnnualEnergy(totalSolarEnergy != null ? totalSolarEnergy : 0.0);
+
+        Double totalSolarCo2 = solarPotentialRepository.findTotalCarbonOffset();
+        dto.setTotalSolarCarbonOffset(totalSolarCo2 != null ? totalSolarCo2 : 0.0);
+
+        Double totalSavings = solarPotentialRepository.findTotalAnnualSavings();
+        dto.setTotalSavingsPotential(totalSavings != null ? totalSavings : 0.0);
+
+        List<com.mpc.solar.web.dto.SolarPotentialDTO> recentSolar = solarPotentialRepository.findTop10ByOrderByCreatedAtDesc()
+                .stream()
+                .map(sp -> {
+                    com.mpc.solar.web.dto.SolarPotentialDTO item = new com.mpc.solar.web.dto.SolarPotentialDTO();
+                    item.setId(sp.getId());
+                    item.setAddress(sp.getAddress());
+                    item.setLatitude(sp.getLatitude());
+                    item.setLongitude(sp.getLongitude());
+                    item.setSolarScore(sp.getSolarScore() != null ? sp.getSolarScore() : 0.0);
+                    item.setAnnualGenerationKwh(sp.getAnnualGenerationKwh() != null ? sp.getAnnualGenerationKwh() : 0.0);
+                    item.setAnnualEnergyKwh(item.getAnnualGenerationKwh());
+                    item.setRoofAreaM2(sp.getRoofAreaM2() != null ? sp.getRoofAreaM2() : 0.0);
+                    item.setEstimatedPanelCount(sp.getEstimatedPanelCount() != null ? sp.getEstimatedPanelCount() : 0);
+                    item.setMaxArrayPanels(item.getEstimatedPanelCount());
+                    item.setCarbonOffsetKg(sp.getCarbonOffsetKg() != null ? sp.getCarbonOffsetKg() : 0.0);
+                    item.setAnnualSavings(sp.getAnnualSavings() != null ? sp.getAnnualSavings() : 0.0);
+                    item.setCreatedAt(sp.getCreatedAt());
+                    double sc = item.getSolarScore();
+                    item.setSolarQualityBadge(sc >= 90.0 ? "EXCELLENT" : (sc >= 75.0 ? "GOOD" : (sc >= 60.0 ? "MODERATE" : "LOW")));
+                    item.setRecommendationLevel(item.getSolarQualityBadge());
+                    return item;
+                })
+                .toList();
+        dto.setRecentSolarAnalyses(recentSolar);
+
+        // AI Solar Advisor Analytics
+        long totalAi = aiRecommendationRepository.count();
+        dto.setTotalAIRecommendations(totalAi);
+
+        Double avgAiScore = aiRecommendationRepository.findAverageSolarScore();
+        dto.setAverageAISolarScore(avgAiScore != null ? Math.round(avgAiScore * 10.0) / 10.0 : 0.0);
+
+        dto.setLowRiskProjectsCount(aiRecommendationRepository.countByRiskAssessmentIgnoreCase("Low"));
+        dto.setMediumRiskProjectsCount(aiRecommendationRepository.countByRiskAssessmentIgnoreCase("Medium"));
+        dto.setHighRiskProjectsCount(aiRecommendationRepository.countByRiskAssessmentIgnoreCase("High"));
+
+        List<String> recsJsonList = aiRecommendationRepository.findAllRecommendationsJson();
+        dto.setMostCommonRecommendation(findMostCommonRecommendation(recsJsonList));
+
+        List<com.mpc.ai.web.dto.AIRecommendationDTO> recentAi = aiRecommendationRepository.findAll().stream()
+                .sorted(Comparator.comparing(com.mpc.ai.domain.AIRecommendation::getCreatedAt, Comparator.nullsLast(Instant::compareTo)).reversed())
+                .limit(8)
+                .map(aiRecommendationService::toDTO)
+                .toList();
+        dto.setRecentAIRecommendations(recentAi);
+
+        // Panel Placement Optimization Analytics
+        long totalLayouts = panelLayoutRepository.count();
+        dto.setTotalOptimizedLayouts(totalLayouts);
+
+        Double avgOptScore = panelLayoutRepository.findAverageOptimizationScore();
+        dto.setAverageOptimizationScore(avgOptScore != null ? Math.round(avgOptScore * 10.0) / 10.0 : 0.0);
+
+        Double avgRoofUtil = panelLayoutRepository.findAverageRoofUtilization();
+        dto.setAverageRoofUtilization(avgRoofUtil != null ? Math.round(avgRoofUtil * 10.0) / 10.0 : 0.0);
+
+        Double totalCapPlanned = panelLayoutRepository.findTotalCapacityPlanned();
+        dto.setTotalCapacityPlanned(totalCapPlanned != null ? Math.round(totalCapPlanned * 10.0) / 10.0 : 0.0);
+
+        String topMode = panelLayoutRepository.findMostSelectedLayoutMode();
+        dto.setMostSelectedLayoutMode(topMode != null ? topMode : "BALANCED");
+
+        List<com.mpc.paneloptimizer.web.dto.PanelLayoutDTO> recentLayouts = panelLayoutRepository
+                .findRecentOptimizations(PageRequest.of(0, 8))
+                .stream()
+                .map(panelOptimizerService::toDTO)
+                .toList();
+        dto.setRecentOptimizations(recentLayouts);
+
+        return dto;
+    }
+
+    private String findMostCommonRecommendation(List<String> jsonList) {
+        if (jsonList == null || jsonList.isEmpty()) {
+            return "Deploy Tier-1 monocrystalline half-cut modules";
+        }
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        Map<String, Integer> freq = new LinkedHashMap<>();
+        for (String json : jsonList) {
+            if (json == null || json.isBlank()) continue;
+            try {
+                List<String> items = mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                for (String item : items) {
+                    if (item == null || item.isBlank()) continue;
+                    String normalized = item.trim();
+                    freq.put(normalized, freq.getOrDefault(normalized, 0) + 1);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return freq.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse("Deploy Tier-1 monocrystalline half-cut modules");
     }
 
     public List<AdminUserDTO> getAllUsers() {

@@ -42,11 +42,27 @@ public class User {
     private String role = "ROLE_USER";
 
     @Column(name = "auto_email_reports", nullable = false)
-    private Boolean autoEmailReports = false;
+    private Boolean autoEmailReports = true;
 
     @com.fasterxml.jackson.annotation.JsonIgnore
     @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
     private List<Report> reports = new ArrayList<>();
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<com.mpc.proposal.domain.Proposal> proposals = new ArrayList<>();
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<com.mpc.solar.domain.SolarPotential> solarPotentials = new ArrayList<>();
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<com.mpc.ai.domain.AIRecommendation> aiRecommendations = new ArrayList<>();
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<com.mpc.paneloptimizer.domain.PanelLayout> panelLayouts = new ArrayList<>();
 
     public User() {
     }
@@ -128,12 +144,28 @@ public class User {
         this.reports = reports;
     }
 
+    public List<com.mpc.proposal.domain.Proposal> getProposals() {
+        return proposals;
+    }
+
+    public void setProposals(List<com.mpc.proposal.domain.Proposal> proposals) {
+        this.proposals = proposals;
+    }
+
     public Boolean getAutoEmailReports() {
         return autoEmailReports != null && autoEmailReports;
     }
 
     public void setAutoEmailReports(Boolean autoEmailReports) {
         this.autoEmailReports = autoEmailReports != null && autoEmailReports;
+    }
+
+    public List<com.mpc.paneloptimizer.domain.PanelLayout> getPanelLayouts() {
+        return panelLayouts;
+    }
+
+    public void setPanelLayouts(List<com.mpc.paneloptimizer.domain.PanelLayout> panelLayouts) {
+        this.panelLayouts = panelLayouts;
     }
 
     public static final class Builder {
@@ -191,3 +223,4 @@ public class User {
         updatedAt = Instant.now();
     }
 }
+

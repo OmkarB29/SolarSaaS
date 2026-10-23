@@ -6,7 +6,11 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import MapSelection from './pages/MapSelection';
 import Analysis from './pages/Analysis';
+import SolarPotential from './pages/SolarPotential';
+import PanelOptimizer from './pages/PanelOptimizer';
 import AnalysisHistory from './pages/AnalysisHistory';
+import MyAnalyses from './pages/MyAnalyses';
+import MyProposals from './pages/MyProposals';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import AdminDashboard from './pages/AdminDashboard';
@@ -32,7 +36,12 @@ function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="map" element={<MapSelection />} />
               <Route path="analysis" element={<Analysis />} />
-              <Route path="analysis-history" element={<AnalysisHistory />} />
+              <Route path="solar-potential" element={<SolarPotential />} />
+              <Route path="panel-optimizer" element={<PanelOptimizer />} />
+              <Route path="my-analyses" element={<MyAnalyses />} />
+              <Route path="analysis-history" element={<MyAnalyses />} />
+              <Route path="my-proposals" element={<MyProposals />} />
+              <Route path="proposals" element={<MyProposals />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
               <Route path="admin" element={<AdminDashboard />} />

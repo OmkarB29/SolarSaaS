@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Zap, 
   Banknote, 
   TrendingUp, 
   Clock, 
-  TreePine
+  TreePine,
+  Layers,
+  FileText,
+  FileDown,
+  Mail
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -13,15 +17,16 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  LineChart,
-  Line,
-  AreaChart,
-  Area
+  LineChart, 
+  Line, 
+  AreaChart, 
+  Area 
 } from 'recharts';
 import StatCard from '../components/ui/StatCard';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
 import { downloadAnalysisReport, getLatestAnalysis } from '../services/reportService';
+import { proposalApiService } from '../services/proposalApiService';
 import ForecastSection from '../components/forecast/ForecastSection';
 import BatteryPlannerSection from '../components/battery/BatteryPlannerSection';
 
@@ -63,6 +68,26 @@ const formatNumber = (value, maximumFractionDigits = 0) =>
 
 const Dashboard = () => {
   const [latestAnalysis] = useState(() => getLatestAnalysis());
+  const [workspaceSummary, setWorkspaceSummary] = useState({
+    totalAnalyses: 0,
+    totalProposals: 0,
+    reportsGenerated: 0,
+    emailsSent: 0,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    proposalApiService.getUserDashboardSummary()
+      .then((data) => {
+        if (isMounted && data) {
+          setWorkspaceSummary(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const dashboardMonthlyEnergyData = useMemo(
     () =>
@@ -98,9 +123,45 @@ const Dashboard = () => {
           <h1 className="text-2xl font-bold text-slate-900">Project Overview</h1>
           <p className="text-slate-500 mt-1">Acme Corp Logistics Hub • Austin, TX</p>
         </div>
-        <button onClick={handleGenerateReport} className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30">
+        <button onClick={handleGenerateReport} className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30 cursor-pointer">
           Generate Report
         </button>
+      </div>
+
+      {/* User Workspace Management Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard 
+          title="Total Analyses" 
+          value={formatNumber(workspaceSummary.totalAnalyses)} 
+          icon={Layers} 
+          trend="Saved rooftop models"
+          trendUp={true}
+          colorClass="bg-blue-100 text-blue-600" 
+        />
+        <StatCard 
+          title="Total Proposals" 
+          value={formatNumber(workspaceSummary.totalProposals)} 
+          icon={FileText} 
+          trend="Commercial proposals"
+          trendUp={true}
+          colorClass="bg-amber-100 text-amber-600" 
+        />
+        <StatCard 
+          title="Reports Generated" 
+          value={formatNumber(workspaceSummary.reportsGenerated)} 
+          icon={FileDown} 
+          trend="PDF feasibility docs"
+          trendUp={true}
+          colorClass="bg-indigo-100 text-indigo-600" 
+        />
+        <StatCard 
+          title="Emails Sent" 
+          value={formatNumber(workspaceSummary.emailsSent)} 
+          icon={Mail} 
+          trend="Dispatched to inbox"
+          trendUp={true}
+          colorClass="bg-emerald-100 text-emerald-600" 
+        />
       </div>
 
       {/* KPI Cards */}

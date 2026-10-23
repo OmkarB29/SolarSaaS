@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileDown, Trash2, MapPin, CalendarDays, FileText, ArrowRight, Mail, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { FileDown, Trash2, MapPin, CalendarDays, FileText, ArrowRight, Mail, CheckCircle2, AlertTriangle, Clock, Sun, ExternalLink } from 'lucide-react';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Table } from '../components/ui/Table';
 import { reportApiService } from '../services/reportApiService';
 import { analysisApiService } from '../services/analysisApiService';
-import { downloadAnalysisReport } from '../services/reportService';
+import { downloadAnalysisReport, downloadSolarPotentialReport } from '../services/reportService';
+import { solarApiService } from '../services/solarApiService';
 import { userSettingsService } from '../services/userSettingsService';
 
 const formatDate = (value) => {
@@ -18,24 +19,38 @@ const formatDate = (value) => {
 
 const Reports = () => {
   const [reports, setReports] = useState([]);
+  const [solarHistory, setSolarHistory] = useState([]);
   const [emailHistory, setEmailHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [resendingId, setResendingId] = useState(null);
+  const [successNotice, setSuccessNotice] = useState('');
+
+  const refreshHistory = async () => {
+    try {
+      const historyData = await userSettingsService.getEmailHistory();
+      setEmailHistory(historyData || []);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
 
     const loadData = async () => {
       try {
-        const [reportsData, historyData] = await Promise.all([
+        const [reportsData, historyData, solarData] = await Promise.all([
           reportApiService.getReports().catch(() => []),
           userSettingsService.getEmailHistory().catch(() => []),
+          solarApiService.getSolarHistory().catch(() => []),
         ]);
         if (isMounted) {
           setReports(reportsData || []);
           setEmailHistory(historyData || []);
+          setSolarHistory(solarData || []);
         }
       } catch (loadError) {
         if (isMounted) setError(loadError.message);
@@ -54,10 +69,13 @@ const Reports = () => {
   const handleDeleteReport = async (id) => {
     setDeletingId(id);
     setError('');
+    setSuccessNotice('');
 
     try {
       await reportApiService.deleteReport(id);
       setReports(reports.filter((report) => report.id !== id));
+      setSuccessNotice('Report deleted successfully.');
+      setTimeout(() => setSuccessNotice(''), 4000);
     } catch (deleteError) {
       setError(deleteError.message);
     } finally {
@@ -68,10 +86,13 @@ const Reports = () => {
   const handleDownloadReport = async (report) => {
     setDownloadingId(report.id);
     setError('');
+    setSuccessNotice('');
 
     try {
       const analysis = await analysisApiService.getAnalysisById(report.analysisId);
       downloadAnalysisReport(analysis);
+      setSuccessNotice(`PDF for "${report.reportName}" downloaded successfully.`);
+      setTimeout(() => setSuccessNotice(''), 4000);
     } catch (downloadError) {
       setError(downloadError.message);
     } finally {
@@ -79,17 +100,78 @@ const Reports = () => {
     }
   };
 
+  const handleDownloadSolarReport = (solarItem) => {
+    setDownloadingId(`solar-${solarItem.id}`);
+    setError('');
+    setSuccessNotice('');
+
+    try {
+      downloadSolarPotentialReport(solarItem);
+      setSuccessNotice(`Solar potential report downloaded successfully.`);
+      setTimeout(() => setSuccessNotice(''), 4000);
+    } catch (downloadError) {
+      setError(downloadError.message || 'Failed to generate solar report PDF');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDeleteSolarReport = async (id) => {
+    setDeletingId(`solar-${id}`);
+    setError('');
+    setSuccessNotice('');
+
+    try {
+      await solarApiService.deleteSolarPotential(id);
+      setSolarHistory((prev) => prev.filter((item) => item.id !== id));
+      setSuccessNotice('Solar assessment deleted successfully.');
+      setTimeout(() => setSuccessNotice(''), 4000);
+    } catch (deleteError) {
+      setError(deleteError.message || 'Failed to delete solar assessment');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleResendEmail = async (report) => {
+    setResendingId(report.id);
+    setError('');
+    setSuccessNotice('');
+
+    try {
+      const res = await reportApiService.resendEmail(report.id);
+      await refreshHistory();
+      if (res?.emailStatus === 'SENT') {
+        setSuccessNotice(`Report "${report.reportName}" re-sent to your email successfully!`);
+      } else if (res?.emailStatus === 'FAILED') {
+        setSuccessNotice(`Re-send logged: ${res.emailMessage || 'SMTP credentials not configured'}`);
+      } else {
+        setSuccessNotice(`Report re-sent successfully.`);
+      }
+      setTimeout(() => setSuccessNotice(''), 5000);
+    } catch (err) {
+      setError(err.message || 'Failed to re-send email');
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   const columns = [
     {
       header: 'Report Name',
       accessorKey: 'reportName',
-      cell: (row) => <span className="font-medium text-slate-900">{row.reportName}</span>,
+      cell: (row) => (
+        <div>
+          <span className="font-semibold text-slate-900 block">{row.reportName}</span>
+          <span className="font-mono text-2xs text-slate-400">Linked to Analysis #{row.analysisId}</span>
+        </div>
+      ),
     },
     {
       header: 'Type',
       accessorKey: 'reportType',
       cell: (row) => (
-        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
           {row.reportType}
         </span>
       ),
@@ -103,24 +185,130 @@ const Reports = () => {
       cell: (row) => formatDate(row.createdAt),
     },
     {
-      header: '',
+      header: 'Actions',
       cell: (row) => (
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          {/* Re-download PDF */}
           <button
             type="button"
             onClick={() => handleDownloadReport(row)}
             disabled={downloadingId === row.id}
-            className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer transition-all"
+            title="Re-download PDF"
           >
             <FileDown size={14} />
-            <span>{downloadingId === row.id ? 'Downloading...' : 'Download'}</span>
+            <span>{downloadingId === row.id ? 'Downloading...' : 'Re-download PDF'}</span>
           </button>
+
+          {/* Re-send Email */}
+          <button
+            type="button"
+            onClick={() => handleResendEmail(row)}
+            disabled={resendingId === row.id}
+            className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer transition-all"
+            title="Re-send report via email"
+          >
+            <Mail size={14} />
+            <span>{resendingId === row.id ? 'Sending...' : 'Re-send Email'}</span>
+          </button>
+
+          {/* Delete */}
           <button
             type="button"
             onClick={() => handleDeleteReport(row.id)}
             disabled={deletingId === row.id}
-            className="text-slate-400 hover:text-rose-600 disabled:opacity-50 cursor-pointer"
+            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 disabled:opacity-50 cursor-pointer transition-all"
             title="Delete report"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  const solarColumns = [
+    {
+      header: 'Rooftop Location',
+      accessorKey: 'formattedAddress',
+      cell: (row) => (
+        <div>
+          <span className="font-semibold text-slate-900 block truncate max-w-xs" title={row.formattedAddress}>
+            {row.formattedAddress || 'Rooftop Assessment'}
+          </span>
+          <span className="font-mono text-2xs text-slate-400">
+            {Number(row.latitude).toFixed(4)}, {Number(row.longitude).toFixed(4)}
+          </span>
+        </div>
+      ),
+    },
+    {
+      header: 'Score & Quality',
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-800">{Math.round(row.solarScore || 0)}</span>
+          <span className={`px-2 py-0.5 rounded-full text-2xs font-semibold ${
+            row.solarQuality === 'EXCELLENT' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+            row.solarQuality === 'GOOD' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+            row.solarQuality === 'MODERATE' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+            'bg-slate-50 text-slate-700 border border-slate-200'
+          }`}>
+            {row.solarQuality || 'ASSESSED'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      header: 'Specs (Panels / Energy)',
+      cell: (row) => (
+        <div className="text-xs">
+          <div className="font-medium text-slate-800">{row.maxArrayPanelsCount} panels • {Math.round(row.maxArrayAreaMeters2 || 0)} m²</div>
+          <div className="text-amber-600 font-semibold">{new Intl.NumberFormat('en-IN').format(Math.round(row.yearlyEnergyDcKwh || 0))} kWh/yr</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Assessed On',
+      cell: (row) => formatDate(row.createdAt),
+    },
+    {
+      header: 'Actions',
+      cell: (row) => (
+        <div className="flex items-center justify-end gap-2">
+          {/* Download Technical Assessment PDF */}
+          <button
+            type="button"
+            onClick={() => handleDownloadSolarReport(row)}
+            disabled={downloadingId === `solar-${row.id}`}
+            className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer transition-all"
+            title="Download Google Solar Technical PDF"
+          >
+            <FileDown size={14} />
+            <span>{downloadingId === `solar-${row.id}` ? 'Generating...' : 'Solar PDF'}</span>
+          </button>
+
+          {/* View in Solar Potential Module */}
+          <Link
+            to="/solar-potential"
+            state={{
+              latitude: row.latitude,
+              longitude: row.longitude,
+              address: row.formattedAddress,
+            }}
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all"
+            title="Open Rooftop in Solar Potential Module"
+          >
+            <ExternalLink size={14} />
+            <span>Open</span>
+          </Link>
+
+          {/* Delete */}
+          <button
+            type="button"
+            onClick={() => handleDeleteSolarReport(row.id)}
+            disabled={deletingId === `solar-${row.id}`}
+            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 disabled:opacity-50 cursor-pointer transition-all"
+            title="Delete solar assessment"
           >
             <Trash2 size={16} />
           </button>
@@ -201,6 +389,13 @@ const Reports = () => {
         </div>
       )}
 
+      {successNotice && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 flex items-center gap-2">
+          <CheckCircle2 size={16} />
+          <span>{successNotice}</span>
+        </div>
+      )}
+
       {/* Report History Card */}
       <Card className="p-0">
         <CardHeader title="Saved Reports in Database" className="mb-0 p-6" />
@@ -232,6 +427,42 @@ const Reports = () => {
                 <span>View System Analysis</span>
               </Link>
             </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Google Solar API Technical Assessments Card */}
+      <Card className="p-0">
+        <CardHeader 
+          title="Google Solar Technical Assessment Reports" 
+          className="mb-0 p-6"
+          action={
+            <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+              <Sun size={14} className="text-amber-500" />
+              <span>{solarHistory.length} Assessed Rooftops</span>
+            </div>
+          }
+        />
+        {isLoading ? (
+          <div className="px-6 pb-6 text-sm text-slate-500">Loading solar assessments...</div>
+        ) : solarHistory.length ? (
+          <Table columns={solarColumns} data={solarHistory} />
+        ) : (
+          <div className="flex flex-col items-center justify-center p-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4">
+              <Sun size={24} />
+            </div>
+            <h3 className="text-base font-semibold text-slate-800 mb-1">No Solar Potential Assessments Saved</h3>
+            <p className="text-sm text-slate-500 max-w-md mb-6">
+              Assess any building rooftop with the Google Solar API module to inspect solar potential, seasonal generation, and download technical assessment PDFs.
+            </p>
+            <Link
+              to="/solar-potential"
+              className="inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all"
+            >
+              <span>Assess Solar Potential</span>
+              <ArrowRight size={16} />
+            </Link>
           </div>
         )}
       </Card>

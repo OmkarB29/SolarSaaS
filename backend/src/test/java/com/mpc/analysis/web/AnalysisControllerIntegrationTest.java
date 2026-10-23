@@ -29,10 +29,22 @@ class AnalysisControllerIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private com.mpc.proposal.repository.ProposalRepository proposalRepository;
+
+    @Autowired
+    private com.mpc.solar.repository.SolarPotentialRepository solarPotentialRepository;
+
+    @Autowired
+    private com.mpc.report.repository.ReportRepository reportRepository;
+
+    @Autowired
     private WebApplicationContext webApplicationContext;
 
     @Autowired
     private Filter springSecurityFilterChain;
+
+    @Autowired
+    private com.mpc.ai.repository.AIRecommendationRepository aiRecommendationRepository;
 
     private MockMvc mockMvc;
 
@@ -41,6 +53,10 @@ class AnalysisControllerIntegrationTest {
         mockMvc = webAppContextSetup(webApplicationContext)
                 .addFilters(springSecurityFilterChain)
                 .build();
+        aiRecommendationRepository.deleteAll();
+        proposalRepository.deleteAll();
+        solarPotentialRepository.deleteAll();
+        reportRepository.deleteAll();
         analysisRepository.deleteAll();
         userRepository.deleteAll();
     }
@@ -92,6 +108,26 @@ class AnalysisControllerIntegrationTest {
 
         mockMvc.perform(get("/api/analysis/" + analysisId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + userBToken))
+                .andExpect(status().isNotFound());
+
+        // Duplicate analysis
+        String dupResponse = mockMvc.perform(post("/api/analysis/" + analysisId + "/duplicate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userAToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.locationName").value("Taj Mahal (Copy)"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long dupId = extractLong(dupResponse, "id");
+
+        // Delete duplicated analysis
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/analysis/" + dupId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userAToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/analysis/" + dupId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userAToken))
                 .andExpect(status().isNotFound());
     }
 

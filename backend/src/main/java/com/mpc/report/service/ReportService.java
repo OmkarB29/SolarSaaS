@@ -85,6 +85,16 @@ public class ReportService {
         reportRepository.delete(report);
     }
 
+    @Transactional
+    public ReportResponse resendReportEmail(String email, Long id) {
+        User user = getUser(email);
+        Report report = reportRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Report not found"));
+
+        var history = emailService.sendAnalysisReportEmail(user, report, report.getAnalysis());
+        return toResponse(report, history.getStatus(), history.getErrorMessage());
+    }
+
     private User getUser(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user not found"));

@@ -246,3 +246,561 @@ export const downloadAnalysisReport = (analysis, forecastData = null) => {
 
   document.save(`SolarScope-Analysis-${new Date().toISOString().slice(0, 10)}.pdf`);
 };
+
+export const downloadSolarPotentialReport = (solarData, userInfo = null, aiRecommendation = null) => {
+  const document = new jsPDF();
+  const pageWidth = document.internal.pageSize.getWidth();
+  const margin = 20;
+  const labelWidth = 65;
+  let y = 26;
+  const totalPages = aiRecommendation ? 3 : 2;
+
+  // PAGE 1: PVGIS Technical Assessment
+  document.setTextColor(15, 23, 42);
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(18);
+  document.text('Solar Potential Technical Assessment Report', margin, y);
+
+  y += 7;
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(9);
+  document.setTextColor(100, 116, 139);
+  document.text('Derived from PVGIS Solar Irradiation Models & Open-Meteo Meteorological Data', margin, y);
+
+  y += 6;
+  document.setDrawColor(245, 158, 11);
+  document.setLineWidth(1.2);
+  document.line(margin, y, pageWidth - margin, y);
+
+  y += 12;
+
+  // Solar Quality Badge Box
+  const score = solarData.solarScore || 0;
+  let badgeColor = [16, 185, 129]; // green
+  if (score < 60) badgeColor = [244, 63, 94]; // red
+  else if (score < 75) badgeColor = [245, 158, 11]; // amber
+  else if (score < 90) badgeColor = [14, 165, 233]; // blue
+
+  document.setFillColor(248, 250, 252);
+  document.roundedRect(margin, y, pageWidth - margin * 2, 24, 3, 3, 'F');
+  document.setDrawColor(226, 232, 240);
+  document.roundedRect(margin, y, pageWidth - margin * 2, 24, 3, 3, 'D');
+
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(10);
+  document.setTextColor(71, 85, 105);
+  document.text('SOLAR QUALITY INDEX', margin + 8, y + 8);
+  document.text('SOLAR SCORE', margin + 85, y + 8);
+  document.text('PEAK SUN HOURS', margin + 128, y + 8);
+
+  document.setFontSize(12);
+  document.setTextColor(badgeColor[0], badgeColor[1], badgeColor[2]);
+  document.text(solarData.solarQualityLabel || 'Standard Solar Potential', margin + 8, y + 17);
+
+  document.setTextColor(15, 23, 42);
+  document.text(`${score} / 100`, margin + 85, y + 17);
+  document.text(`${solarData.peakSunHours ? solarData.peakSunHours.toFixed(1) : '5.2'} hrs/day`, margin + 128, y + 17);
+
+  y += 32;
+
+  const annualGen = solarData.annualGenerationKwh || solarData.annualEnergyKwh || 0;
+  const sysSize = solarData.systemSizeKWp || 0;
+  const panelCount = solarData.estimatedPanelCount || solarData.maxArrayPanels || 0;
+  const usableArea = (solarData.roofAreaM2 || 0) * 0.75;
+  const payback = solarData.paybackYears || solarData.paybackPeriod || 0;
+
+  const rows = [
+    ['Site Address', solarData.address || 'Rooftop Site'],
+    ['Coordinates', `${solarData.latitude?.toFixed(5)}° N, ${solarData.longitude?.toFixed(5)}° E`],
+    ['Total Roof Area', `${formatNumber(solarData.roofAreaM2, 1)} m²`],
+    ['Usable Rooftop Area', `${formatNumber(usableArea, 1)} m² (75% utilization factor)`],
+    ['Estimated System Size', `${formatNumber(sysSize, 1)} kWp`],
+    ['Estimated Panel Count', `${panelCount} modules (Monocrystalline 550W)`],
+    ['Annual Solar Irradiance', `${formatNumber(solarData.annualIrradianceKwhM2, 1)} kWh/m²`],
+    ['Estimated Annual Energy', `${formatNumber(annualGen)} kWh/year`],
+    ['Peak Sun Hours', `${formatNumber(solarData.peakSunHours, 1)} hours/day`],
+    ['Average Temperature', `${formatNumber(solarData.temperatureAvg, 1)} °C`],
+    ['Average Cloud Cover', `${formatNumber(solarData.cloudCoverPercent, 1)}%`],
+    ['Weather Adjustment Factor', `${formatNumber(solarData.weatherAdjustmentFactor, 3)}`],
+    ['Roof Utilization', `${formatNumber(solarData.roofUtilizationPercent || 75.0, 1)}%`],
+    ['Carbon Offset', `${formatNumber(solarData.carbonOffsetKg)} kg CO₂/year`],
+    ['Equivalent Homes Powered', `${formatNumber(solarData.homesPowered, 1)} residential homes`],
+    ['Estimated Annual Savings', `₹${formatNumber(solarData.annualSavings)}/year`],
+    ['Estimated Payback Period', `${formatNumber(payback, 1)} years`],
+    ['Recommended Battery Storage', `${formatNumber(solarData.recommendedBatteryKwh || Math.max(10, Math.round(annualGen / 365 * 1.2)))} kWh (LiFePO4)`],
+  ];
+
+  rows.forEach(([label, value], index) => {
+    if (index % 2 === 0) {
+      document.setFillColor(248, 250, 252);
+      document.rect(margin, y - 4.5, pageWidth - margin * 2, 8.5, 'F');
+    }
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(8.5);
+    document.setTextColor(71, 85, 105);
+    document.text(label, margin + 4, y);
+
+    document.setFont('helvetica', 'normal');
+    document.setTextColor(15, 23, 42);
+    document.text(String(value), margin + labelWidth, y);
+    y += 8.5;
+  });
+
+  document.setDrawColor(226, 232, 240);
+  document.line(margin, 278, pageWidth - margin, 278);
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(9);
+  document.setTextColor(100, 116, 139);
+  document.text(`Generated by SolarScope • Page 1 of ${totalPages}`, pageWidth / 2, 285, { align: 'center' });
+
+  // PAGE 2: Monthly Breakdown & Recommendations
+  document.addPage();
+  let y2 = 26;
+
+  document.setTextColor(15, 23, 42);
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(16);
+  document.text('Solar Generation Dynamics & Engineering Recommendations', margin, y2);
+
+  y2 += 6;
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(9);
+  document.setTextColor(100, 116, 139);
+  document.text('Derived from European Commission PVGIS Irradiation Models & Local Meteorological Datasets', margin, y2);
+
+  y2 += 6;
+  document.setDrawColor(245, 158, 11);
+  document.setLineWidth(1.2);
+  document.line(margin, y2, pageWidth - margin, y2);
+
+  y2 += 10;
+
+  // Monthly Generation Summary
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(12);
+  document.setTextColor(15, 23, 42);
+  document.text('12-Month Solar Generation Projection (PVGIS Data)', margin, y2);
+
+  y2 += 6;
+  const months = solarData.monthlyGeneration || [];
+  const colWidth = (pageWidth - margin * 2) / 12;
+  months.forEach((m, idx) => {
+    const colX = margin + idx * colWidth;
+    document.setFillColor(241, 245, 249);
+    document.rect(colX + 0.5, y2, colWidth - 1, 15, 'F');
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(7.5);
+    document.setTextColor(71, 85, 105);
+    document.text(m.month, colX + 1.5, y2 + 5);
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(7);
+    document.setTextColor(15, 23, 42);
+    document.text(`${Math.round(m.generationKwh)}`, colX + 1.5, y2 + 10);
+    document.setFontSize(6);
+    document.setTextColor(100, 116, 139);
+    document.text('kWh', colX + 1.5, y2 + 13.5);
+  });
+
+  y2 += 25;
+
+  // Weather & Meteorological Impact Summary
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(12);
+  document.setTextColor(15, 23, 42);
+  document.text('Meteorological Integration & Environmental Footprint', margin, y2);
+
+  y2 += 6;
+  document.setFillColor(248, 250, 252);
+  document.roundedRect(margin, y2, pageWidth - margin * 2, 22, 2, 2, 'F');
+  document.setDrawColor(226, 232, 240);
+  document.roundedRect(margin, y2, pageWidth - margin * 2, 22, 2, 2, 'D');
+
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(8.5);
+  document.setTextColor(51, 65, 85);
+  const weatherSummaryText = `Meteorological observations indicate an average ambient temperature of ${formatNumber(solarData.temperatureAvg, 1)}°C and cloud cover factor of ${formatNumber(solarData.cloudCoverPercent, 1)}%. Using our PVGIS thermodynamic model, the weather adjustment factor was calculated at ${formatNumber(solarData.weatherAdjustmentFactor, 3)}. The system displaces an estimated ${formatNumber(solarData.carbonOffsetKg)} kg of CO₂ annually, equivalent to powering ${formatNumber(solarData.homesPowered, 1)} standard households.`;
+  const splitWeather = document.splitTextToSize(weatherSummaryText, pageWidth - margin * 2 - 10);
+  document.text(splitWeather, margin + 5, y2 + 6);
+
+  y2 += 30;
+
+  // Engineering Recommendations (Up to 5 deterministic rules)
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(12);
+  document.setTextColor(15, 23, 42);
+  document.text('Deterministic Engineering Recommendations', margin, y2);
+
+  y2 += 6;
+  const recs = solarData.recommendations || [];
+  recs.slice(0, 5).forEach((rec) => {
+    const boxHeight = 20;
+    document.setFillColor(248, 250, 252);
+    document.roundedRect(margin, y2, pageWidth - margin * 2, boxHeight, 2, 2, 'F');
+    document.setDrawColor(226, 232, 240);
+    document.roundedRect(margin, y2, pageWidth - margin * 2, boxHeight, 2, 2, 'D');
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(8.5);
+    document.setTextColor(180, 83, 9);
+    document.text(`• ${rec.title} [${rec.impactLevel || 'STANDARD'} IMPACT]`, margin + 5, y2 + 5.5);
+
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(7.5);
+    document.setTextColor(51, 65, 85);
+    const recText = `${rec.recommendation || ''} Reason: ${rec.reason || ''} Benefit: ${rec.expectedBenefit || ''}`;
+    const benefitLines = document.splitTextToSize(recText, pageWidth - margin * 2 - 10);
+    document.text(benefitLines.slice(0, 2), margin + 5, y2 + 11);
+
+    y2 += boxHeight + 3;
+  });
+
+  document.setDrawColor(226, 232, 240);
+  document.line(margin, 278, pageWidth - margin, 278);
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(9);
+  document.setTextColor(100, 116, 139);
+  document.text(`Generated by SolarScope • Page 2 of ${totalPages}`, pageWidth / 2, 285, { align: 'center' });
+
+  // PAGE 3: AI Solar Advisor & Strategic Insights (if available)
+  if (aiRecommendation) {
+    document.addPage();
+    let y3 = 26;
+
+    document.setTextColor(15, 23, 42);
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(16);
+    document.text('AI Solar Advisor — Strategic Insights & Action Plan', margin, y3);
+
+    y3 += 6;
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(9);
+    document.setTextColor(100, 116, 139);
+    document.text('Natural-language strategic evaluation powered by OpenAI GPT & Solar Engineering Heuristics', margin, y3);
+
+    y3 += 6;
+    document.setDrawColor(99, 102, 241);
+    document.setLineWidth(1.2);
+    document.line(margin, y3, pageWidth - margin, y3);
+
+    y3 += 10;
+
+    // 4 Assessment Badges Summary Box
+    const badgeWidth = (pageWidth - margin * 2 - 9) / 4;
+    const badgeItems = [
+      { title: 'Installation Feasibility', val: aiRecommendation.installationAssessment || 'Good' },
+      { title: 'Financial Viability', val: aiRecommendation.financialAssessment || 'Good' },
+      { title: 'Storage Battery', val: aiRecommendation.batteryRecommendation || 'Optional' },
+      { title: 'Risk Classification', val: `${aiRecommendation.riskAssessment || 'Low'} Risk` },
+    ];
+
+    badgeItems.forEach((b, idx) => {
+      const bX = margin + idx * (badgeWidth + 3);
+      document.setFillColor(248, 250, 252);
+      document.roundedRect(bX, y3, badgeWidth, 18, 2, 2, 'F');
+      document.setDrawColor(226, 232, 240);
+      document.roundedRect(bX, y3, badgeWidth, 18, 2, 2, 'D');
+
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(7);
+      document.setTextColor(100, 116, 139);
+      document.text(b.title, bX + 3, y3 + 6);
+
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(9);
+      document.setTextColor(15, 23, 42);
+      document.text(b.val, bX + 3, y3 + 13);
+    });
+
+    y3 += 25;
+
+    // Executive Summary
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(11);
+    document.setTextColor(15, 23, 42);
+    document.text('Executive Summary', margin, y3);
+
+    y3 += 5;
+    document.setFillColor(248, 250, 252);
+    document.roundedRect(margin, y3, pageWidth - margin * 2, 34, 2, 2, 'F');
+    document.setDrawColor(226, 232, 240);
+    document.roundedRect(margin, y3, pageWidth - margin * 2, 34, 2, 2, 'D');
+
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(8.5);
+    document.setTextColor(51, 65, 85);
+    const summaryText = aiRecommendation.executiveSummary || 'No executive summary provided.';
+    const splitSummary = document.splitTextToSize(summaryText, pageWidth - margin * 2 - 8);
+    document.text(splitSummary.slice(0, 5), margin + 4, y3 + 7);
+
+    y3 += 40;
+
+    // AI Strategic Recommendations
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(11);
+    document.setTextColor(15, 23, 42);
+    document.text('Actionable Advisory Recommendations', margin, y3);
+
+    y3 += 5;
+    const aiRecs = aiRecommendation.recommendations || [];
+    aiRecs.slice(0, 4).forEach((rec) => {
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(8.5);
+      document.setTextColor(99, 102, 241);
+      document.text('✓', margin + 2, y3 + 4);
+
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(8);
+      document.setTextColor(30, 41, 59);
+      const recLines = document.splitTextToSize(rec, pageWidth - margin * 2 - 14);
+      document.text(recLines.slice(0, 2), margin + 10, y3 + 4);
+      y3 += Math.max(8, recLines.slice(0, 2).length * 4.5 + 3);
+    });
+
+    y3 += 4;
+
+    // 5-Step Action Plan
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(11);
+    document.setTextColor(15, 23, 42);
+    document.text('5-Step Implementation Roadmap', margin, y3);
+
+    y3 += 5;
+    const planSteps = aiRecommendation.actionPlan || [];
+    planSteps.slice(0, 5).forEach((step, sIdx) => {
+      const stepBoxHeight = 15;
+      document.setFillColor(248, 250, 252);
+      document.roundedRect(margin, y3, pageWidth - margin * 2, stepBoxHeight, 2, 2, 'F');
+      document.setDrawColor(226, 232, 240);
+      document.roundedRect(margin, y3, pageWidth - margin * 2, stepBoxHeight, 2, 2, 'D');
+
+      document.setFillColor(99, 102, 241);
+      document.circle(margin + 6, y3 + 7.5, 3.5, 'F');
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(7.5);
+      document.setTextColor(255, 255, 255);
+      document.text(`${step.stepNumber || sIdx + 1}`, margin + 4.8, y3 + 9.5);
+
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(8);
+      document.setTextColor(15, 23, 42);
+      document.text(step.title || `Phase ${sIdx + 1}`, margin + 14, y3 + 5.5);
+
+      if (step.timeline) {
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(7);
+        document.setTextColor(100, 116, 139);
+        document.text(`(${step.timeline})`, margin + 14 + document.getTextWidth(step.title || '') + 4, y3 + 5.5);
+      }
+
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(7.2);
+      document.setTextColor(71, 85, 105);
+      const descLines = document.splitTextToSize(step.description || '', pageWidth - margin * 2 - 20);
+      document.text(descLines.slice(0, 2), margin + 14, y3 + 10.5);
+
+      y3 += stepBoxHeight + 2.5;
+    });
+
+    document.setDrawColor(226, 232, 240);
+    document.line(margin, 278, pageWidth - margin, 278);
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(9);
+    document.setTextColor(100, 116, 139);
+    document.text(`Generated by SolarScope AI Advisor • Page 3 of ${totalPages}`, pageWidth / 2, 285, { align: 'center' });
+  }
+
+  document.save(`SolarPotential-Assessment-${(solarData.address || 'Site').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20)}.pdf`);
+};
+
+export const downloadPanelOptimizationReport = (layout, rooftopInfo = null, dimensions = null, comparisons = []) => {
+  const document = new jsPDF();
+  const pageWidth = document.internal.pageSize.getWidth();
+  const margin = 20;
+  const labelWidth = 68;
+  let y = 26;
+
+  // Header
+  document.setTextColor(15, 23, 42);
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(17);
+  document.text('AI Rooftop Panel Placement Optimization Report', margin, y);
+
+  y += 6.5;
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(8.5);
+  document.setTextColor(100, 116, 139);
+  document.text('Vector Boundary Alignment • Ray-Casting Collision Avoidance • Deterministic Optimization', margin, y);
+
+  y += 6;
+  document.setDrawColor(16, 185, 129); // emerald green
+  document.setLineWidth(1.2);
+  document.line(margin, y, pageWidth - margin, y);
+
+  y += 10;
+
+  // Top KPI Highlight Badges
+  const badgeWidth = (pageWidth - margin * 2 - 9) / 4;
+  const badges = [
+    { label: 'LAYOUT MODE', val: layout.title || layout.mode || 'OPTIMAL', color: [16, 185, 129] },
+    { label: 'PANEL COUNT', val: `${layout.panelCount || 0} Modules`, color: [30, 41, 59] },
+    { label: 'SYSTEM CAPACITY', val: `${(layout.systemCapacityKw || 0).toFixed(2)} kWp`, color: [14, 165, 233] },
+    { label: 'OPTIMIZATION SCORE', val: `${layout.optimizationScore || 0} / 100`, color: [245, 158, 11] },
+  ];
+
+  badges.forEach((b, idx) => {
+    const bX = margin + idx * (badgeWidth + 3);
+    document.setFillColor(248, 250, 252);
+    document.roundedRect(bX, y, badgeWidth, 19, 2, 2, 'F');
+    document.setDrawColor(226, 232, 240);
+    document.roundedRect(bX, y, badgeWidth, 19, 2, 2, 'D');
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(7);
+    document.setTextColor(100, 116, 139);
+    document.text(b.label, bX + 4, y + 6);
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(9.5);
+    document.setTextColor(b.color[0], b.color[1], b.color[2]);
+    document.text(String(b.val), bX + 4, y + 14);
+  });
+
+  y += 26;
+
+  // Technical Specifications Section
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(11);
+  document.setTextColor(15, 23, 42);
+  document.text('Layout Technical Specifications', margin, y);
+
+  y += 5;
+  const modLength = dimensions?.lengthMeters || 2.1;
+  const modWidth = dimensions?.widthMeters || 1.1;
+  const modPower = dimensions?.powerWatts || 550;
+  const annualGen = layout.annualGenerationKwh || 0;
+  const savings = Math.round(annualGen * 8.5);
+
+  const specRows = [
+    ['Site / Rooftop Area', `${formatNumber(layout.roofArea || 0, 1)} m²`],
+    ['Effective Usable Array Area', `${formatNumber(layout.usableArea || 0, 1)} m²`],
+    ['Rooftop Area Utilization', `${formatNumber(layout.roofUtilizationPercent || 0, 1)}%`],
+    ['Photovoltaic Module Model', `Tier-1 Monocrystalline PERC (${modLength}m × ${modWidth}m)`],
+    ['Module Power Rating', `${modPower} Watts Peak`],
+    ['Estimated Annual Generation', `${formatNumber(annualGen)} kWh / year`],
+    ['Estimated Monthly Generation', `${formatNumber(Math.round(annualGen / 12))} kWh / month`],
+    ['Estimated Annual Value Savings', `₹${formatNumber(savings)} / year`],
+    ['Annual Carbon Offset', `${formatNumber(Math.round(annualGen * 0.82))} kg CO₂ / year`],
+    ['Boundary Margin / Setback', layout.mode === 'MAXIMUM_CAPACITY' ? '0.25 m minimal setback' : layout.mode === 'HIGH_EFFICIENCY' ? '0.80 m setback & 0.55 m inter-row pitch' : '0.50 m perimeter & 0.80 m service aisle'],
+    ['Generation Date', new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })],
+  ];
+
+  specRows.forEach(([lbl, val], idx) => {
+    if (idx % 2 === 0) {
+      document.setFillColor(248, 250, 252);
+      document.rect(margin, y - 4, pageWidth - margin * 2, 7.5, 'F');
+    }
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(8);
+    document.setTextColor(71, 85, 105);
+    document.text(lbl, margin + 4, y + 1);
+
+    document.setFont('helvetica', 'normal');
+    document.setTextColor(15, 23, 42);
+    document.text(String(val), margin + labelWidth, y + 1);
+    y += 7.5;
+  });
+
+  y += 5;
+
+  // Comparison Against Other Placement Modes (if provided)
+  if (comparisons && comparisons.length > 0) {
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(11);
+    document.setTextColor(15, 23, 42);
+    document.text('Layout Mode Comparison', margin, y);
+
+    y += 5;
+    // Table header
+    document.setFillColor(241, 245, 249);
+    document.rect(margin, y - 4, pageWidth - margin * 2, 7.5, 'F');
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(7.5);
+    document.setTextColor(71, 85, 105);
+    document.text('Layout Mode', margin + 4, y + 1);
+    document.text('Panels', margin + 55, y + 1);
+    document.text('Capacity (kWp)', margin + 82, y + 1);
+    document.text('Utilization (%)', margin + 118, y + 1);
+    document.text('Annual Gen (kWh)', margin + 148, y + 1);
+
+    y += 7.5;
+    comparisons.forEach((c, cIdx) => {
+      const isCurrent = c.mode === layout.mode;
+      if (isCurrent) {
+        document.setFillColor(240, 253, 244);
+        document.rect(margin, y - 4, pageWidth - margin * 2, 7, 'F');
+      } else if (cIdx % 2 === 0) {
+        document.setFillColor(248, 250, 252);
+        document.rect(margin, y - 4, pageWidth - margin * 2, 7, 'F');
+      }
+
+      document.setFont('helvetica', isCurrent ? 'bold' : 'normal');
+      document.setFontSize(7.5);
+      document.setTextColor(isCurrent ? 16 : 30, isCurrent ? 185 : 41, isCurrent ? 129 : 59);
+      document.text(`${c.title || c.mode} ${isCurrent ? '(Selected)' : ''}`, margin + 4, y + 1);
+
+      document.setTextColor(15, 23, 42);
+      document.text(`${c.panelCount || 0}`, margin + 55, y + 1);
+      document.text(`${(c.systemCapacityKw || 0).toFixed(1)} kWp`, margin + 82, y + 1);
+      document.text(`${(c.roofUtilizationPercent || 0).toFixed(1)}%`, margin + 118, y + 1);
+      document.text(`${formatNumber(c.annualGenerationKwh || 0)}`, margin + 148, y + 1);
+      y += 7;
+    });
+
+    y += 5;
+  }
+
+  // AI Layout Insights & Engineering Recommendations
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(11);
+  document.setTextColor(15, 23, 42);
+  document.text('Engineering Recommendations & Shading Mitigation', margin, y);
+
+  y += 5;
+  const insights = layout.aiInsights || [
+    'Boundary Margin Clearance: Walkway aisles conform to fire safety setbacks and inverter accessibility standards.',
+    'Orientation Alignment: Panels are parallel to primary roof vector edge to optimize uniform packing factor.',
+    'Shading Mitigation: High spacing tolerance prevents self-shading during low solar elevation winter azimuths.',
+    'String Inverter Sizing: Array configured for standard multi-MPPT inverters with balanced sub-string voltages.'
+  ];
+
+  insights.slice(0, 4).forEach((rec) => {
+    document.setFillColor(248, 250, 252);
+    document.roundedRect(margin, y - 3, pageWidth - margin * 2, 10, 1.5, 1.5, 'F');
+    document.setDrawColor(226, 232, 240);
+    document.roundedRect(margin, y - 3, pageWidth - margin * 2, 10, 1.5, 1.5, 'D');
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(8);
+    document.setTextColor(16, 185, 129);
+    document.text('•', margin + 4, y + 3.5);
+
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(7.5);
+    document.setTextColor(30, 41, 59);
+    const recLines = document.splitTextToSize(rec, pageWidth - margin * 2 - 14);
+    document.text(recLines.slice(0, 2), margin + 9, y + 3.5);
+    y += 12;
+  });
+
+  // Footer
+  document.setDrawColor(226, 232, 240);
+  document.line(margin, 278, pageWidth - margin, 278);
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(8.5);
+  document.setTextColor(100, 116, 139);
+  document.text('Generated by SolarScope AI Panel Placement Optimizer • Page 1 of 1', pageWidth / 2, 285, { align: 'center' });
+
+  document.save(`SolarScope-Panel-Layout-${layout.mode || 'Optimal'}-${new Date().toISOString().slice(0, 10)}.pdf`);
+};
+

@@ -22,20 +22,30 @@ public class DataInitializer implements CommandLineRunner {
     private final UserRepository userRepository;
     private final AnalysisRepository analysisRepository;
     private final ReportRepository reportRepository;
+    private final com.mpc.proposal.repository.ProposalRepository proposalRepository;
     private final PasswordEncoder passwordEncoder;
 
     public DataInitializer(UserRepository userRepository,
                            AnalysisRepository analysisRepository,
                            ReportRepository reportRepository,
+                           com.mpc.proposal.repository.ProposalRepository proposalRepository,
                            PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.analysisRepository = analysisRepository;
         this.reportRepository = reportRepository;
+        this.proposalRepository = proposalRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(String... args) {
+        // Ensure autoEmailReports is enabled by default for existing users
+        userRepository.findAll().forEach(u -> {
+            if (u.getAutoEmailReports() == null || !u.getAutoEmailReports()) {
+                u.setAutoEmailReports(true);
+                userRepository.save(u);
+            }
+        });
         // Seed Admin User if not present
         User admin = userRepository.findByEmail("admin@solarsaas.com").orElseGet(() -> {
             User newAdmin = new User();
@@ -114,6 +124,28 @@ public class DataInitializer implements CommandLineRunner {
             report2.setFilePath("/reports/solar_feasibility_kothrud.pdf");
             report2.setGeneratedAt(Instant.now());
             reportRepository.save(report2);
+
+            com.mpc.proposal.domain.Proposal prop1 = new com.mpc.proposal.domain.Proposal(
+                    admin, savedAnalysis1, "Commercial Rooftop Solar Proposal",
+                    savedAnalysis1.getSystemSize(), savedAnalysis1.getInstallationCost(),
+                    savedAnalysis1.getRoi(), com.mpc.proposal.domain.ProposalStatus.APPROVED
+            );
+            proposalRepository.save(prop1);
+
+            com.mpc.proposal.domain.Proposal prop2 = new com.mpc.proposal.domain.Proposal(
+                    demoUser, savedAnalysis2, "Residential Net-Metering Proposal",
+                    savedAnalysis2.getSystemSize(), savedAnalysis2.getInstallationCost(),
+                    savedAnalysis2.getRoi(), com.mpc.proposal.domain.ProposalStatus.REVIEWED
+            );
+            proposalRepository.save(prop2);
+
+            com.mpc.proposal.domain.Proposal prop3 = new com.mpc.proposal.domain.Proposal(
+                    admin, savedAnalysis1, "Phase 2 High-Efficiency Array Proposal",
+                    savedAnalysis1.getSystemSize() * 1.5, savedAnalysis1.getInstallationCost() * 1.4,
+                    savedAnalysis1.getRoi() + 1.5, com.mpc.proposal.domain.ProposalStatus.INSTALLED
+            );
+            proposalRepository.save(prop3);
+
             log.info("Sample data initialization complete.");
         }
     }

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, Compass, Layers, MapPin } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, CheckCircle2, Compass, Layers, MapPin, Sun, ArrowRight } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import AnalysisResults from '../components/map/AnalysisResults';
 import InteractiveMap from '../components/map/InteractiveMap';
@@ -13,6 +14,7 @@ import { applyWeatherAdjustment, calculateRooftopArea, estimateSolarAnalysis } f
 const DEFAULT_POSITION = [12.9716, 77.5946];
 
 const MapSelection = () => {
+  const navigate = useNavigate();
   const hasUserSelectedLocation = useRef(false);
   const weatherDebounceRef = useRef(null);
   const [query, setQuery] = useState('Bengaluru');
@@ -120,10 +122,21 @@ const MapSelection = () => {
 
   const handlePolygonChange = useCallback((coordinates) => {
     setPolygonCoordinates(coordinates);
-    setArea(calculateRooftopArea(coordinates));
+    const calculatedArea = calculateRooftopArea(coordinates);
+    setArea(calculatedArea);
     setAnalysisResults(null);
     setIsDrawing(false);
-  }, []);
+
+    // Automatically persist rooftop selection for instant retrieval by Solar Potential module
+    const rooftopData = {
+      latitude: markerPosition[0],
+      longitude: markerPosition[1],
+      address: markerLabel,
+      polygonCoordinates: coordinates,
+      roofArea: calculatedArea,
+    };
+    localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
+  }, [markerPosition, markerLabel]);
 
   const handleRunAnalysis = async () => {
     if (!area) {
@@ -164,6 +177,14 @@ const MapSelection = () => {
     };
 
     setAnalysisResults(results);
+    const rooftopData = {
+      latitude: markerPosition[0],
+      longitude: markerPosition[1],
+      address: markerLabel,
+      polygonCoordinates,
+      roofArea: area,
+    };
+    localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
     localStorage.setItem('latestAnalysis', JSON.stringify(latestAnalysis));
 
     try {
@@ -264,15 +285,37 @@ const MapSelection = () => {
 
           <div className="flex-1" />
 
-          <button
-            type="button"
-            onClick={handleRunAnalysis}
-            disabled={isSavingAnalysis}
-            className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-4 font-bold text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <span>{isSavingAnalysis ? 'Saving Analysis...' : 'Run Analysis'}</span>
-            <Layers size={20} className="transition-transform group-hover:translate-x-1" />
-          </button>
+          <div className="space-y-2 mt-4">
+            <button
+              type="button"
+              onClick={handleRunAnalysis}
+              disabled={isSavingAnalysis}
+              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-3.5 font-bold text-white shadow-md transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
+            >
+              <span>{isSavingAnalysis ? 'Saving Analysis...' : 'Financial Analysis'}</span>
+              <Layers size={18} className="transition-transform group-hover:translate-x-1" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const rooftopData = {
+                  latitude: markerPosition[0],
+                  longitude: markerPosition[1],
+                  address: markerLabel,
+                  polygonCoordinates,
+                  roofArea: area,
+                };
+                localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
+                navigate('/solar-potential', { state: { rooftop: rooftopData } });
+              }}
+              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3.5 font-bold text-white shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+            >
+              <Sun size={18} />
+              <span>Assess Solar Potential</span>
+              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+            </button>
+          </div>
         </div>
 
         <div className="relative col-span-1 h-full min-h-[560px] overflow-hidden rounded-xl border border-slate-200 lg:col-span-3">

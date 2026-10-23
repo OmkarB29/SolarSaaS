@@ -1,6 +1,7 @@
 import { authService } from './authService';
+import { apiUrl } from './apiConfig';
 
-const API_BASE_URL = 'http://localhost:8081/api';
+const API_BASE_URL = apiUrl('/api');
 
 export const getForecast = async (lat, lon, analysisId = null) => {
   try {

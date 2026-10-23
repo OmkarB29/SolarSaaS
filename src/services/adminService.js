@@ -1,4 +1,6 @@
-const API_BASE_URL = '/api/admin';
+import { apiUrl } from './apiConfig';
+
+const API_BASE_URL = apiUrl('/api/admin');
 
 const getStoredToken = () => {
   try {

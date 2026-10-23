@@ -30,6 +30,18 @@ public class Analysis {
     @jakarta.persistence.OneToMany(mappedBy = "analysis", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
     private java.util.List<com.mpc.report.domain.Report> reports = new java.util.ArrayList<>();
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @jakarta.persistence.OneToMany(mappedBy = "analysis", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<com.mpc.proposal.domain.Proposal> proposals = new java.util.ArrayList<>();
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @jakarta.persistence.OneToMany(mappedBy = "analysis", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<com.mpc.solar.domain.SolarPotential> solarPotentials = new java.util.ArrayList<>();
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @jakarta.persistence.OneToMany(mappedBy = "analysis", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<com.mpc.paneloptimizer.domain.PanelLayout> panelLayouts = new java.util.ArrayList<>();
+
     @Column(name = "location_name", nullable = false, length = 255)
     private String locationName;
 
@@ -242,6 +254,22 @@ public class Analysis {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public java.util.List<com.mpc.proposal.domain.Proposal> getProposals() {
+        return proposals;
+    }
+
+    public void setProposals(java.util.List<com.mpc.proposal.domain.Proposal> proposals) {
+        this.proposals = proposals;
+    }
+
+    public java.util.List<com.mpc.paneloptimizer.domain.PanelLayout> getPanelLayouts() {
+        return panelLayouts;
+    }
+
+    public void setPanelLayouts(java.util.List<com.mpc.paneloptimizer.domain.PanelLayout> panelLayouts) {
+        this.panelLayouts = panelLayouts;
     }
 
     @PrePersist

@@ -50,4 +50,16 @@ public class AnalysisController {
     public AnalysisResponse get(@PathVariable Long id, Authentication authentication) {
         return analysisService.getAnalysisById(authentication.getName(), id);
     }
+
+    @PostMapping("/{id}/duplicate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AnalysisResponse duplicate(@PathVariable Long id, Authentication authentication) {
+        return analysisService.duplicateAnalysis(authentication.getName(), id);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id, Authentication authentication) {
+        analysisService.deleteAnalysis(authentication.getName(), id);
+    }
 }

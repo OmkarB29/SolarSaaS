@@ -1,3 +1,5 @@
+import { apiUrl } from './apiConfig';
+
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cache = new Map();
 const pendingRequests = new Map();
@@ -26,7 +28,7 @@ export const weatherApiService = {
       return pendingRequests.get(cacheKey);
     }
 
-    const request = fetch(`/api/weather?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}`)
+    const request = fetch(apiUrl(`/api/weather?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}`))
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(await getApiError(response));

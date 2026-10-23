@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Sun,
   Layers,
@@ -29,6 +29,7 @@ import { ChartContainer } from '../components/ui/Chart';
 import DynamicPanelLayout from '../components/map/DynamicPanelLayout';
 import { reportApiService } from '../services/reportApiService';
 import { analysisApiService } from '../services/analysisApiService';
+import { proposalApiService } from '../services/proposalApiService';
 import { getLatestAnalysis } from '../services/reportService';
 
 const formatNumber = (value, digits = 0) =>
@@ -42,29 +43,62 @@ const formatCurrency = (value) =>
     : `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value)}`;
 
 const Analysis = () => {
-  const [analysis, setAnalysis] = useState(() => getLatestAnalysis());
+  const routerLocation = useLocation();
+  const [analysis, setAnalysis] = useState(() => {
+    if (routerLocation.state?.analysis) {
+      return routerLocation.state.analysis;
+    }
+    return getLatestAnalysis();
+  });
   const [isLoading, setIsLoading] = useState(!analysis);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // PART 4 - Load user's latest saved analysis on mount
+  // Load user's analysis from location.state or latest saved analysis from backend
   useEffect(() => {
     let isMounted = true;
+
+    if (routerLocation.state?.analysis) {
+      setAnalysis(routerLocation.state.analysis);
+      setIsLoading(false);
+      return;
+    }
+
     const fetchLatest = async () => {
       try {
         const backendLatest = await analysisApiService.getLatestAnalysis();
         if (isMounted && backendLatest) {
-          setAnalysis(prev => {
-            // Merge backend analysis with previous local data if available
-            return {
-              ...prev,
-              ...backendLatest,
-              panels: backendLatest.estimatedPanels || prev?.panels || 20,
-              yearlyGeneration: backendLatest.annualGeneration || backendLatest.yearlyGeneration || prev?.yearlyGeneration,
-              yearlySavings: backendLatest.annualSavings || backendLatest.yearlySavings || prev?.yearlySavings,
-            };
-          });
+          const formatted = {
+            id: backendLatest.id,
+            location: backendLatest.locationName || backendLatest.location || 'Rooftop Site',
+            locationName: backendLatest.locationName || backendLatest.location || 'Rooftop Site',
+            latitude: backendLatest.latitude,
+            longitude: backendLatest.longitude,
+            roofArea: backendLatest.roofArea || 0,
+            usableArea: backendLatest.usableArea || (backendLatest.estimatedPanels ? backendLatest.estimatedPanels * 2.5 : 0),
+            systemSize: backendLatest.systemSize || (backendLatest.estimatedPanels ? Number((backendLatest.estimatedPanels * 0.4).toFixed(1)) : 0),
+            panels: backendLatest.estimatedPanels || 20,
+            estimatedPanels: backendLatest.estimatedPanels || 20,
+            monthlyGeneration: backendLatest.monthlyGeneration,
+            yearlyGeneration: backendLatest.annualGeneration || (backendLatest.monthlyGeneration ? backendLatest.monthlyGeneration * 12 : 0),
+            annualGeneration: backendLatest.annualGeneration || (backendLatest.monthlyGeneration ? backendLatest.monthlyGeneration * 12 : 0),
+            installationCost: backendLatest.installationCost || 0,
+            yearlySavings: backendLatest.annualSavings || (backendLatest.monthlyGeneration ? backendLatest.monthlyGeneration * 12 * 8.5 : 0),
+            annualSavings: backendLatest.annualSavings || (backendLatest.monthlyGeneration ? backendLatest.monthlyGeneration * 12 * 8.5 : 0),
+            roi: backendLatest.roi || 0,
+            co2Reduction: backendLatest.co2Reduction || 0,
+            paybackPeriod: backendLatest.paybackPeriod || 4.0,
+            batteryRecommendation: backendLatest.batteryRecommendation || 30,
+            weatherAdjustment: backendLatest.weatherAdjustment || 0,
+            createdAt: backendLatest.createdAt,
+          };
+          setAnalysis(formatted);
+          try {
+            localStorage.setItem('latestAnalysis', JSON.stringify(formatted));
+          } catch {
+            // ignore
+          }
         }
       } catch (err) {
         console.warn('Could not fetch latest analysis from backend, relying on local state:', err);
@@ -77,7 +111,7 @@ const Analysis = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [routerLocation.state]);
 
   // Compute dynamic 20-Year Profitability curve from actual metrics
   const profitData = useMemo(() => {
@@ -181,7 +215,22 @@ const Analysis = () => {
       };
 
       const savedReportResponse = await reportApiService.saveReport(reportData);
-      let successMsg = 'Proposal saved to PostgreSQL!';
+
+      // 3. Persist proposal entity in PostgreSQL
+      try {
+        await proposalApiService.createProposal({
+          proposalName: reportName,
+          analysisId: analysisId,
+          systemSize: systemSize,
+          cost: installationCost,
+          roi: roi,
+          status: 'DRAFT',
+        });
+      } catch (propErr) {
+        console.warn('Could not save proposal record:', propErr);
+      }
+
+      let successMsg = 'Proposal saved to database!';
       if (savedReportResponse?.emailStatus === 'SENT') {
         successMsg = 'Proposal saved & report emailed to your inbox!';
       } else if (savedReportResponse?.emailStatus === 'FAILED') {
