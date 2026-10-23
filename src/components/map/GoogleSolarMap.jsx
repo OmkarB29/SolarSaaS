@@ -137,6 +137,10 @@ export const GoogleSolarMap = ({
         zoomControlOptions: {
           position: window.google.maps.ControlPosition.RIGHT_BOTTOM,
         },
+        scaleControl: true,
+        scaleControlOptions: {
+          position: window.google.maps.ControlPosition.LEFT_BOTTOM,
+        },
       });
 
       mapRef.current = map;

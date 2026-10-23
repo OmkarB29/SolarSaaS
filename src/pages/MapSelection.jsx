@@ -21,7 +21,7 @@ import { reportApiService } from '../services/reportApiService';
 import { geocodingService } from '../services/geocodingService';
 import { weatherApiService } from '../services/weatherApiService';
 import { googleSolarService } from '../services/googleSolarService';
-import { applyWeatherAdjustment, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
+import { applyWeatherAdjustment, calculatePolygonMetrics, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
 import { isPointInPolygon } from '../utils/geoUtils';
 
 const DEFAULT_POSITION = [12.9716, 77.5946];
@@ -320,6 +320,10 @@ const MapSelection = () => {
 
   const estimatedPanels = Math.floor(area / 2.5);
 
+  const polygonMetrics = useMemo(() => {
+    return calculatePolygonMetrics(polygonCoordinates);
+  }, [polygonCoordinates]);
+
   const googleFluxBounds = useMemo(() => {
     if (googleSolarData?.boundingBox) {
       return {
@@ -419,18 +423,49 @@ const MapSelection = () => {
 
             {/* Active Drawn Rooftop Area Display */}
             {polygonCoordinates.length >= 3 && area > 0 ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-2">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Selected Rooftop Area</span>
                   <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">Custom Area</span>
                 </div>
-                <div className="flex items-baseline space-x-1">
-                  <span className="text-3xl font-extrabold text-blue-950">{area.toLocaleString('en-IN')}</span>
-                  <span className="font-semibold text-blue-700">m²</span>
+                <div className="flex items-baseline justify-between">
+                  <div className="flex items-baseline space-x-1">
+                    <span className="text-3xl font-extrabold text-blue-950">{area.toLocaleString('en-IN')}</span>
+                    <span className="font-semibold text-blue-700">m²</span>
+                  </div>
+                  {polygonMetrics.areaSqFt > 0 && (
+                    <span className="text-xs font-semibold text-slate-500">
+                      {polygonMetrics.areaSqFt.toLocaleString('en-IN')} sq ft
+                    </span>
+                  )}
                 </div>
+
+                {polygonMetrics.dimensionsSummary !== '-' && (
+                  <div className="rounded-lg bg-blue-100/70 p-2.5 text-[11px] text-blue-900 space-y-1">
+                    <div className="flex justify-between font-bold">
+                      <span>Physical Dimensions:</span>
+                      <span className="font-mono text-blue-950">{polygonMetrics.dimensionsSummary}</span>
+                    </div>
+                    <div className="flex justify-between text-blue-800 text-[10px]">
+                      <span>Perimeter:</span>
+                      <span className="font-mono">{polygonMetrics.perimeterMeters} m</span>
+                    </div>
+                    {polygonMetrics.sideLengths.length > 0 && (
+                      <div className="text-[10px] text-blue-700 border-t border-blue-200/60 pt-1 flex flex-wrap gap-x-2">
+                        <span>Sides:</span>
+                        <span className="font-mono">{polygonMetrics.sideLengths.map((s) => `${s}m`).join(' × ')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <p className="text-xs text-blue-700">
                   Fits approx. <strong className="text-blue-950">{estimatedPanels}</strong> standard panels
                   {panelsInDrawnArea.length > 0 && ` (${panelsInDrawnArea.length} Google Solar modules in bounds)`}.
+                </p>
+
+                <p className="text-[11px] text-slate-500 italic">
+                  💡 Tip: To assess a smaller subsection (e.g. 250–450 m²), click "Draw Custom Rooftop Outline" and trace that specific roof portion.
                 </p>
 
                 {/* Show Panels on Roof Toggle inside drawn perimeter */}

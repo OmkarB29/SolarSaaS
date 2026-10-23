@@ -8,16 +8,98 @@ const COST_PER_PANEL = 21500;
 const ELECTRICITY_RATE = 8.5;
 const CO2_FACTOR = 0.82;
 
+/**
+ * Calculates high-precision geodesic metrics for a rooftop polygon:
+ * - Area in square meters (m²) and square feet (sq ft)
+ * - Exact side lengths for each edge (meters)
+ * - Total perimeter (meters)
+ * - Estimated physical length × width dimensions
+ */
+export const calculatePolygonMetrics = (coordinates) => {
+  if (!coordinates || coordinates.length < 3) {
+    return {
+      areaM2: 0,
+      areaSqFt: 0,
+      perimeterMeters: 0,
+      sideLengths: [],
+      dimensionsSummary: '-',
+    };
+  }
+
+  // 1. Calculate Geodesic Area (Google Maps spherical if ready, or Turf WGS84)
+  let areaM2 = 0;
+  if (typeof window !== 'undefined' && window.google?.maps?.geometry?.spherical?.computeArea) {
+    try {
+      const path = coordinates.map((pt) =>
+        Array.isArray(pt) ? new window.google.maps.LatLng(pt[0], pt[1]) : new window.google.maps.LatLng(pt.lat, pt.lng)
+      );
+      areaM2 = Math.round(window.google.maps.geometry.spherical.computeArea(path));
+    } catch {}
+  }
+
+  if (!areaM2) {
+    const ring = coordinates.map((pt) => (Array.isArray(pt) ? [pt[1], pt[0]] : [pt.lng, pt.lat]));
+    const firstPoint = ring[0];
+    const lastPoint = ring[ring.length - 1];
+    const closedRing =
+      firstPoint[0] === lastPoint[0] && firstPoint[1] === lastPoint[1] ? ring : [...ring, firstPoint];
+    areaM2 = Math.round(turfArea(turfPolygon([closedRing])));
+  }
+
+  // 2. Calculate physical length of each drawn edge in meters
+  const sideLengths = [];
+  let perimeterMeters = 0;
+  const n = coordinates.length;
+  for (let i = 0; i < n; i++) {
+    const p1 = coordinates[i];
+    const p2 = coordinates[(i + 1) % n];
+    const lat1 = Array.isArray(p1) ? p1[0] : p1.lat;
+    const lng1 = Array.isArray(p1) ? p1[1] : p1.lng;
+    const lat2 = Array.isArray(p2) ? p2[0] : p2.lat;
+    const lng2 = Array.isArray(p2) ? p2[1] : p2.lng;
+
+    let len = 0;
+    if (typeof window !== 'undefined' && window.google?.maps?.geometry?.spherical?.computeDistanceBetween) {
+      try {
+        len = window.google.maps.geometry.spherical.computeDistanceBetween(
+          new window.google.maps.LatLng(lat1, lng1),
+          new window.google.maps.LatLng(lat2, lng2)
+        );
+      } catch {}
+    }
+    if (!len) {
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLng = ((lng2 - lng1) * Math.PI) / 180;
+      const meanLat = ((lat1 + lat2) / 2) * (Math.PI / 180);
+      const dy = dLat * 6371000;
+      const dx = dLng * 6371000 * Math.cos(meanLat);
+      len = Math.sqrt(dx * dx + dy * dy);
+    }
+    const roundedLen = Math.round(len * 10) / 10;
+    sideLengths.push(roundedLen);
+    perimeterMeters += roundedLen;
+  }
+
+  perimeterMeters = Math.round(perimeterMeters * 10) / 10;
+  const areaSqFt = Math.round(areaM2 * 10.7639);
+
+  // 3. Extract bounding dimensions (~Length × ~Width)
+  const sortedSides = [...sideLengths].sort((a, b) => b - a);
+  const approxLength = sortedSides[0] || 0;
+  const approxWidth = sortedSides[Math.floor(sortedSides.length / 2)] || 0;
+  const dimensionsSummary = `~${approxLength}m × ~${approxWidth}m`;
+
+  return {
+    areaM2,
+    areaSqFt,
+    perimeterMeters,
+    sideLengths,
+    dimensionsSummary,
+  };
+};
+
 export const calculateRooftopArea = (coordinates) => {
-  if (!coordinates || coordinates.length < 3) return 0;
-
-  const ring = coordinates.map(([lat, lng]) => [lng, lat]);
-  const firstPoint = ring[0];
-  const lastPoint = ring[ring.length - 1];
-  const closedRing =
-    firstPoint[0] === lastPoint[0] && firstPoint[1] === lastPoint[1] ? ring : [...ring, firstPoint];
-
-  return Math.round(turfArea(turfPolygon([closedRing])));
+  return calculatePolygonMetrics(coordinates).areaM2;
 };
 
 export const estimateSolarAnalysis = (areaSqm) => {
