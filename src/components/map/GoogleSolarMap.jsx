@@ -6,6 +6,23 @@ import { Layers, Eye, EyeOff, RotateCcw, AlertTriangle, X, HelpCircle, CheckCirc
 
 const DEFAULT_CENTER = { lat: 12.9716, lng: 77.5946 }; // Bengaluru Default
 
+// Fast Ray-casting point-in-polygon algorithm to clip panels strictly to rooftop perimeter
+const isPointInPolygon = (pt, vs) => {
+  if (!vs || vs.length < 3) return true;
+  const x = pt[0];
+  const y = pt[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0];
+    const yi = vs[i][1];
+    const xj = vs[j][0];
+    const yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
 export const GoogleSolarMap = ({
   apiKey,
   mapId = 'SOLAR_MAP_CANVAS',
@@ -21,6 +38,9 @@ export const GoogleSolarMap = ({
   isDrawingEnabled = false,
   onCancelDrawing,
   solarPanels = [],
+  roofSegmentStats = [],
+  panelHeightMeters = 1.879,
+  panelWidthMeters = 1.045,
   showSolarPanels = true,
   panelLimit = 100,
   showFluxOverlay: initialFlux = false,
@@ -156,7 +176,6 @@ export const GoogleSolarMap = ({
     const map = mapRef.current;
     if (!map || authBlockedError) return;
 
-    // Set cursor style depending on drawing mode
     map.setOptions({
       draggableCursor: isDrawingEnabled ? 'crosshair' : null,
     });
@@ -167,10 +186,8 @@ export const GoogleSolarMap = ({
       const lng = e.latLng.lng();
 
       if (isDrawingEnabled) {
-        // Point-and-click rooftop outline
         setActiveDrawingPoints((prev) => [...prev, [lat, lng]]);
       } else {
-        // Site re-targeting pin
         if (onMapClick) {
           onMapClick({ lat, lng, latLngBounds: map.getBounds() });
         }
@@ -187,7 +204,6 @@ export const GoogleSolarMap = ({
     const map = mapRef.current;
     if (!map || authBlockedError || !window.google?.maps) return;
 
-    // Clear old drawing visual elements
     if (drawingPolylineRef.current) {
       drawingPolylineRef.current.setMap(null);
       drawingPolylineRef.current = null;
@@ -201,10 +217,9 @@ export const GoogleSolarMap = ({
 
     const path = activeDrawingPoints.map(([lat, lng]) => ({ lat, lng }));
 
-    // Draw connecting line between selected rooftop corners
     const polyline = new window.google.maps.Polyline({
       path,
-      strokeColor: '#3b82f6', // Google Blue
+      strokeColor: '#3b82f6',
       strokeOpacity: 0.95,
       strokeWeight: 3,
       map,
@@ -212,7 +227,6 @@ export const GoogleSolarMap = ({
     });
     drawingPolylineRef.current = polyline;
 
-    // Render vertex dots for each corner
     activeDrawingPoints.forEach(([lat, lng], idx) => {
       const marker = new window.google.maps.Marker({
         position: { lat, lng },
@@ -248,7 +262,6 @@ export const GoogleSolarMap = ({
     };
   }, [isDrawingEnabled, activeDrawingPoints, authBlockedError]);
 
-  // Complete & commit manual rooftop outline
   const handleFinishRooftopOutline = useCallback(() => {
     if (activeDrawingPoints.length < 3) return;
     if (onPolygonChange) {
@@ -283,9 +296,7 @@ export const GoogleSolarMap = ({
         const targetCenter = Array.isArray(center) ? { lat: center[0], lng: center[1] } : center;
         map.panTo(targetCenter);
       }
-    } catch {
-      // Safe boundary ignore
-    }
+    } catch {}
   }, [center, bounds, authBlockedError]);
 
   // 6. Marker Overlay (Target Installation Pin)
@@ -402,7 +413,6 @@ export const GoogleSolarMap = ({
       polygon.setMap(map);
       polygonRef.current = polygon;
 
-      // Auto-fit camera to the rooftop polygon
       const polyBounds = new window.google.maps.LatLngBounds();
       path.forEach((coord) => polyBounds.extend(coord));
       map.fitBounds(polyBounds, 40);
@@ -418,7 +428,7 @@ export const GoogleSolarMap = ({
     };
   }, [polygonCoordinates, authBlockedError]);
 
-  // 8. Render Individual Google Solar Panels on the Roof (Google Solar Demo feature)
+  // 8. RENDER ACCURATELY ROTATED & RADIANCE-SORTED SOLAR PANELS ON THE ROOFTOP
   useEffect(() => {
     const map = mapRef.current;
     if (!map || authBlockedError || !window.google?.maps) return;
@@ -431,32 +441,81 @@ export const GoogleSolarMap = ({
 
     if (!showSolarPanels || !solarPanels || solarPanels.length === 0) return;
 
-    const panelsToRender = solarPanels.slice(0, panelLimit || solarPanels.length);
+    // 1. If user defined/auto-selected a rooftop boundary polygon, clip panels strictly inside that boundary!
+    let eligiblePanels = [...solarPanels];
+    if (polygonCoordinates && polygonCoordinates.length >= 3) {
+      eligiblePanels = eligiblePanels.filter((panel) => {
+        if (!panel.center) return false;
+        return isPointInPolygon([panel.center.latitude, panel.center.longitude], polygonCoordinates);
+      });
+    }
 
-    // Render each panel as a compact solar rectangle
+    // 2. Sort by solar radiance / yearly energy output descending to guarantee MAXIMUM THROUGHPUT first
+    eligiblePanels.sort((a, b) => (b.yearlyEnergyDcKwh || 0) - (a.yearlyEnergyDcKwh || 0));
+
+    // 3. Slice to selected panel limit
+    const panelsToRender = eligiblePanels.slice(0, panelLimit || eligiblePanels.length);
+
+    if (panelsToRender.length === 0) return;
+
+    const maxEnergy = panelsToRender[0]?.yearlyEnergyDcKwh || 720;
+    const minEnergy = panelsToRender[panelsToRender.length - 1]?.yearlyEnergyDcKwh || 650;
+    const energyRange = Math.max(1, maxEnergy - minEnergy);
+
+    const DEG_TO_RAD = Math.PI / 180;
+    const metersPerLat = 111132;
+    const pHeight = panelHeightMeters || 1.879;
+    const pWidth = panelWidthMeters || 1.045;
+
+    // 4. Render physically accurate rotated panel rectangles
     panelsToRender.forEach((panel) => {
       if (!panel.center) return;
-      const lat = panel.center.latitude;
-      const lng = panel.center.longitude;
+      const centerLat = panel.center.latitude;
+      const centerLng = panel.center.longitude;
 
-      // Approximate standard panel dimensions (1.8m x 1.0m in lat/lng deltas)
-      const latDelta = 0.000008;
-      const lngDelta = 0.000005;
+      // Extract azimuth rotation from roof segment
+      const segment = roofSegmentStats?.[panel.segmentIndex] || null;
+      const azimuthRad = (segment?.azimuthDegrees || 0) * DEG_TO_RAD;
 
-      const panelBox = [
-        { lat: lat + latDelta, lng: lng - lngDelta },
-        { lat: lat + latDelta, lng: lng + lngDelta },
-        { lat: lat - latDelta, lng: lng + lngDelta },
-        { lat: lat - latDelta, lng: lng - lngDelta },
+      const isLandscape = panel.orientation === 'LANDSCAPE';
+      const halfLength = (isLandscape ? pHeight : pWidth) / 2;
+      const halfBreadth = (isLandscape ? pWidth : pHeight) / 2;
+
+      // Local 4 corners (along ridge u, along azimuth pitch v)
+      const localCorners = [
+        [-halfLength, -halfBreadth],
+        [ halfLength, -halfBreadth],
+        [ halfLength,  halfBreadth],
+        [-halfLength,  halfBreadth],
       ];
+
+      const metersPerLng = 111132 * Math.cos(centerLat * DEG_TO_RAD);
+
+      // Rotate corners by roof azimuth so panels match building geometry
+      const panelPath = localCorners.map(([u, v]) => {
+        const dEast = u * Math.cos(azimuthRad) + v * Math.sin(azimuthRad);
+        const dNorth = -u * Math.sin(azimuthRad) + v * Math.cos(azimuthRad);
+        return {
+          lat: centerLat + (dNorth / metersPerLat),
+          lng: centerLng + (dEast / metersPerLng),
+        };
+      });
+
+      // Solar Radiance color-coding: top radiance gets deep cobalt with gold border
+      const energy = panel.yearlyEnergyDcKwh || minEnergy;
+      const ratio = Math.max(0, Math.min(1, (energy - minEnergy) / energyRange));
+
+      const fillColor = ratio > 0.65 ? '#1d4ed8' : ratio > 0.35 ? '#2563eb' : '#3b82f6';
+      const strokeColor = ratio > 0.65 ? '#f59e0b' : '#1e3a8a';
+      const strokeWeight = ratio > 0.65 ? 1.2 : 0.8;
 
       try {
         const panelPoly = new window.google.maps.Polygon({
-          paths: panelBox,
-          strokeColor: '#1e3a8a',
-          strokeWeight: 1,
-          fillColor: '#2563eb', // Vibrant Solar Blue
-          fillOpacity: 0.85,
+          paths: panelPath,
+          strokeColor,
+          strokeWeight,
+          fillColor,
+          fillOpacity: 0.90,
           map,
           zIndex: 80,
         });
@@ -471,7 +530,16 @@ export const GoogleSolarMap = ({
       });
       solarPanelPolygonsRef.current = [];
     };
-  }, [solarPanels, showSolarPanels, panelLimit, authBlockedError]);
+  }, [
+    solarPanels, 
+    roofSegmentStats, 
+    panelHeightMeters, 
+    panelWidthMeters, 
+    polygonCoordinates, 
+    showSolarPanels, 
+    panelLimit, 
+    authBlockedError
+  ]);
 
   // 9. Solar Flux Heatmap Overlay
   const effectiveFluxBounds = React.useMemo(() => {
@@ -522,7 +590,6 @@ export const GoogleSolarMap = ({
     setRetryCount((c) => c + 1);
   };
 
-  // If Key is Missing
   if (loadError === 'MISSING_KEY') {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-8 text-white">
@@ -566,7 +633,6 @@ export const GoogleSolarMap = ({
     );
   }
 
-  // If Key is Blocked by Google Cloud (ApiTargetBlockedMapError):
   if (authBlockedError) {
     return (
       <div className={`relative ${className} overflow-hidden`}>

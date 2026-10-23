@@ -418,10 +418,10 @@ const MapSelection = () => {
                   </div>
 
                   {showSolarPanels && (
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-600 mb-1">
-                        <span>Modules Displayed:</span>
-                        <span className="font-bold text-blue-700">{panelCountSlider} / {googleSolarData.maxArrayPanelsCount}</span>
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-700">
+                        <span className="font-medium">Active Modules:</span>
+                        <span className="font-extrabold text-blue-700">{panelCountSlider} / {googleSolarData.maxArrayPanelsCount}</span>
                       </div>
                       <input
                         type="range"
@@ -431,6 +431,10 @@ const MapSelection = () => {
                         onChange={(e) => setPanelCountSlider(Number(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
+                      <div className="flex items-center justify-between text-[10px] bg-blue-50/80 p-2 rounded-lg border border-blue-200/60 text-slate-700 font-medium">
+                        <span>Solar Yield: <strong className="text-blue-900 font-extrabold">{Math.round(panelCountSlider * 705).toLocaleString('en-IN')} kWh/yr</strong></span>
+                        <span className="text-emerald-700 font-bold bg-emerald-100/80 px-1.5 py-0.5 rounded">Max Throughput</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -535,6 +539,9 @@ const MapSelection = () => {
             isDrawingEnabled={isDrawing}
             onCancelDrawing={() => setIsDrawing(false)}
             solarPanels={googleSolarData?.solarPanels || []}
+            roofSegmentStats={googleSolarData?.roofSegmentStats || []}
+            panelHeightMeters={googleSolarData?.panelHeightMeters || 1.879}
+            panelWidthMeters={googleSolarData?.panelWidthMeters || 1.045}
             showSolarPanels={showSolarPanels}
             panelLimit={panelCountSlider}
             fluxBounds={googleFluxBounds}
