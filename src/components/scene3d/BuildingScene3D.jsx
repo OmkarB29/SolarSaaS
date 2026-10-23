@@ -81,6 +81,25 @@ function createRoofTexture() {
 }
 
 /**
+ * Computes polygon winding order via Shoelace formula.
+ * Returns true if vertices are arranged clockwise.
+ */
+function isClockwise(points) {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    const p1 = points[i];
+    const p2 = points[j];
+    const x1 = p1.x ?? p1[0];
+    const y1 = p1.y ?? p1[1];
+    const x2 = p2.x ?? p2[0];
+    const y2 = p2.y ?? p2[1];
+    area += (x2 - x1) * (y2 + y1);
+  }
+  return area > 0;
+}
+
+/**
  * Builds a THREE.Shape from an array of 2D coordinates in local (x, z) space.
  * Formats points as THREE.Vector2(x, -z) to preserve geographical orientation
  * when rotated into Three.js Y-up world space.
@@ -97,7 +116,7 @@ export function buildShapeFromFootprint(footprint) {
   });
 
   // Ensure counter-clockwise winding order for positive normal extrusion
-  if (THREE.ShapeUtils.isClockwise(points)) {
+  if (isClockwise(points)) {
     points.reverse();
   }
 

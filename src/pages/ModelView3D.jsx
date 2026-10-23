@@ -361,6 +361,52 @@ const PanelTooltip = ({ panel }) => {
   );
 };
 
+/* ─── WebGL Canvas Error Boundary ─── */
+class CanvasErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[CanvasErrorBoundary] 3D Canvas error caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full min-h-[620px] flex flex-col items-center justify-center p-8 bg-slate-950 text-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400">
+            <AlertCircle size={28} />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-white">3D Rendering Encountered an Issue</h3>
+            <p className="text-xs text-slate-400 max-w-md font-mono bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+              {this.state.error?.message || 'WebGL Context / Geometry Error'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              this.props.onRetry?.();
+            }}
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
+          >
+            <RefreshCw size={14} />
+            <span>Reload 3D Canvas</span>
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /* ─── Main View Component ─── */
 const ModelView3D = () => {
   const [sceneData, setSceneData] = useState(null);
@@ -807,38 +853,40 @@ const ModelView3D = () => {
           )}
 
           {sceneData ? (
-            <Canvas
-              shadows
-              dpr={[1, 2]}
-              className="w-full h-full"
-              style={{
-                minHeight: '620px',
-                background: 'radial-gradient(circle at 50% 30%, #1e293b 0%, #090d16 100%)',
-              }}
-              onCreated={({ gl }) => {
-                gl.shadowMap.enabled = true;
-                gl.shadowMap.type = THREE.PCFSoftShadowMap;
-                gl.toneMapping = THREE.ACESFilmicToneMapping;
-                gl.toneMappingExposure = 1.15;
-              }}
-            >
-              {showStats && <Stats />}
+            <CanvasErrorBoundary onRetry={loadScene}>
+              <Canvas
+                shadows
+                dpr={[1, 2]}
+                className="w-full h-full"
+                style={{
+                  minHeight: '620px',
+                  background: 'radial-gradient(circle at 50% 30%, #1e293b 0%, #090d16 100%)',
+                }}
+                onCreated={({ gl }) => {
+                  gl.shadowMap.enabled = true;
+                  gl.shadowMap.type = THREE.PCFSoftShadowMap;
+                  gl.toneMapping = THREE.ACESFilmicToneMapping;
+                  gl.toneMappingExposure = 1.15;
+                }}
+              >
+                {showStats && <Stats />}
 
-              <Suspense fallback={null}>
-                <SceneContent
-                  sceneData={sceneData}
-                  showPanels={showPanels}
-                  showParapet={showParapet}
-                  showWireframe={showWireframe}
-                  showGrid={showGrid}
-                  showShadows={showShadows}
-                  buildingHeight={buildingHeight}
-                  onPanelHover={setHoveredPanel}
-                  cameraPreset={cameraPreset}
-                />
-                {hoveredPanel && <PanelTooltip panel={hoveredPanel} />}
-              </Suspense>
-            </Canvas>
+                <Suspense fallback={null}>
+                  <SceneContent
+                    sceneData={sceneData}
+                    showPanels={showPanels}
+                    showParapet={showParapet}
+                    showWireframe={showWireframe}
+                    showGrid={showGrid}
+                    showShadows={showShadows}
+                    buildingHeight={buildingHeight}
+                    onPanelHover={setHoveredPanel}
+                    cameraPreset={cameraPreset}
+                  />
+                  {hoveredPanel && <PanelTooltip panel={hoveredPanel} />}
+                </Suspense>
+              </Canvas>
+            </CanvasErrorBoundary>
           ) : null}
 
           {/* Watermark Overlay */}
