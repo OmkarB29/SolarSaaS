@@ -11,6 +11,7 @@ import {
   Layers,
   FileCheck,
   Cpu,
+  Box,
 } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
 
