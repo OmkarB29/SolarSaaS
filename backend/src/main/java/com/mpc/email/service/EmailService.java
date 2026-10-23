@@ -1,5 +1,6 @@
 package com.mpc.email.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mpc.analysis.domain.Analysis;
 import com.mpc.email.domain.EmailHistory;
 import com.mpc.email.repository.EmailHistoryRepository;
@@ -15,9 +16,17 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.text.NumberFormat;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 
 @Service
@@ -27,6 +36,10 @@ public class EmailService {
 
     private final EmailHistoryRepository emailHistoryRepository;
     private final PdfGenerationService pdfGenerationService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     @Value("${spring.mail.host:smtp.gmail.com}")
     private String mailHost;
@@ -40,6 +53,12 @@ public class EmailService {
     @Value("${spring.mail.password:}")
     private String mailPassword;
 
+    @Value("${resend.api.key:${RESEND_API_KEY:}}")
+    private String resendApiKey;
+
+    @Value("${brevo.api.key:${BREVO_API_KEY:}}")
+    private String brevoApiKey;
+
     private final NumberFormat numberFormat = NumberFormat.getNumberInstance(new Locale("en", "IN"));
 
     public EmailService(EmailHistoryRepository emailHistoryRepository,
@@ -48,9 +67,18 @@ public class EmailService {
         this.pdfGenerationService = pdfGenerationService;
     }
 
+    public boolean isResendConfigured() {
+        return resendApiKey != null && !resendApiKey.trim().isEmpty() && !resendApiKey.startsWith("${");
+    }
+
+    public boolean isBrevoConfigured() {
+        return brevoApiKey != null && !brevoApiKey.trim().isEmpty() && !brevoApiKey.startsWith("${");
+    }
+
     public boolean isMailConfigured() {
-        return mailUsername != null && !mailUsername.trim().isEmpty() &&
-               mailPassword != null && !mailPassword.trim().isEmpty();
+        return isResendConfigured() || isBrevoConfigured() ||
+               (mailUsername != null && !mailUsername.trim().isEmpty() &&
+                mailPassword != null && !mailPassword.trim().isEmpty());
     }
 
     public EmailHistory sendAnalysisReportEmail(User user, Report report, Analysis analysis) {
@@ -59,38 +87,134 @@ public class EmailService {
         Instant now = Instant.now();
 
         if (!isMailConfigured()) {
-            String warning = "SMTP credentials not configured in environment (MAIL_USERNAME / MAIL_PASSWORD not set).";
+            String warning = "No email delivery provider configured (set RESEND_API_KEY, BREVO_API_KEY, or MAIL_USERNAME/PASSWORD).";
             log.warn("[AUTO-EMAIL] Skipped sending report email to {}: {}", recipientEmail, warning);
             EmailHistory history = new EmailHistory(user, report, recipientEmail, subject, "FAILED", now, warning);
             return emailHistoryRepository.save(history);
         }
 
         try {
-            JavaMailSender mailSender = createMailSender();
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-
-            helper.setFrom(mailUsername, "SolarSaaS CleanEnergy");
-            helper.setTo(recipientEmail);
-            helper.setSubject(subject);
-            helper.setText(buildHtmlBody(user, analysis), true);
-
-            // Generate PDF Attachment
             byte[] pdfBytes = pdfGenerationService.generateAnalysisPdf(analysis);
-            String filename = "SolarSaaS-Analysis-Report.pdf";
-            helper.addAttachment(filename, new ByteArrayResource(pdfBytes), "application/pdf");
+            String htmlBody = buildHtmlBody(user, analysis);
 
-            mailSender.send(mimeMessage);
+            if (isResendConfigured()) {
+                log.info("[AUTO-EMAIL] Sending report to {} via Resend HTTPS API (Port 443)...", recipientEmail);
+                sendViaResendHttp(recipientEmail, subject, htmlBody, pdfBytes);
+            } else if (isBrevoConfigured()) {
+                log.info("[AUTO-EMAIL] Sending report to {} via Brevo HTTPS API (Port 443)...", recipientEmail);
+                sendViaBrevoHttp(recipientEmail, user.getUsername(), subject, htmlBody, pdfBytes);
+            } else {
+                log.info("[AUTO-EMAIL] Sending report to {} via standard SMTP ({}:{})...", recipientEmail, mailHost, mailPort);
+                sendViaSmtp(recipientEmail, subject, htmlBody, pdfBytes);
+            }
+
             log.info("[AUTO-EMAIL] Successfully delivered report email with PDF attachment to {}", recipientEmail);
-
             EmailHistory history = new EmailHistory(user, report, recipientEmail, subject, "SENT", now, null);
             return emailHistoryRepository.save(history);
         } catch (Exception e) {
-            String errorMsg = "Email delivery failed: " + e.getMessage();
-            log.error("[AUTO-EMAIL] Failed to send report email to {}: {}", recipientEmail, e.getMessage());
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && (errorMsg.contains("timed out") || errorMsg.contains("MailConnectException"))) {
+                errorMsg = "Render blocks direct SMTP ports 587/465. To send emails on Render, add RESEND_API_KEY (from resend.com) or BREVO_API_KEY (from brevo.com) to your Render environment variables.";
+            } else {
+                errorMsg = "Email delivery failed: " + errorMsg;
+            }
+
+            log.error("[AUTO-EMAIL] Failed to send report email to {}: {}", recipientEmail, errorMsg);
             EmailHistory history = new EmailHistory(user, report, recipientEmail, subject, "FAILED", now, errorMsg);
             return emailHistoryRepository.save(history);
         }
+    }
+
+    private void sendViaResendHttp(String recipientEmail, String subject, String htmlBody, byte[] pdfBytes) throws Exception {
+        String base64Pdf = Base64.getEncoder().encodeToString(pdfBytes);
+        Map<String, Object> attachment = Map.of(
+                "filename", "SolarSaaS-Analysis-Report.pdf",
+                "content", base64Pdf
+        );
+
+        String fromAddress = (mailUsername != null && mailUsername.contains("@")) 
+                ? "SolarScope CleanEnergy <onboarding@resend.dev>" 
+                : "SolarScope <onboarding@resend.dev>";
+
+        Map<String, Object> payload = Map.of(
+                "from", fromAddress,
+                "to", List.of(recipientEmail),
+                "subject", subject,
+                "html", htmlBody,
+                "attachments", List.of(attachment)
+        );
+
+        String jsonPayload = objectMapper.writeValueAsString(payload);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.resend.com/emails"))
+                .header("Authorization", "Bearer " + resendApiKey.trim())
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            throw new RuntimeException("Resend API rejected request (HTTP " + response.statusCode() + "): " + response.body());
+        }
+    }
+
+    private void sendViaBrevoHttp(String recipientEmail, String recipientName, String subject, String htmlBody, byte[] pdfBytes) throws Exception {
+        String base64Pdf = Base64.getEncoder().encodeToString(pdfBytes);
+        Map<String, Object> attachment = Map.of(
+                "name", "SolarSaaS-Analysis-Report.pdf",
+                "content", base64Pdf
+        );
+
+        String senderEmail = (mailUsername != null && mailUsername.contains("@")) ? mailUsername.trim() : "solarsaas.project@gmail.com";
+        Map<String, Object> sender = Map.of(
+                "name", "SolarScope CleanEnergy",
+                "email", senderEmail
+        );
+
+        Map<String, Object> to = Map.of(
+                "email", recipientEmail,
+                "name", recipientName != null && !recipientName.isBlank() ? recipientName : "Solar Energy Client"
+        );
+
+        Map<String, Object> payload = Map.of(
+                "sender", sender,
+                "to", List.of(to),
+                "subject", subject,
+                "htmlContent", htmlBody,
+                "attachment", List.of(attachment)
+        );
+
+        String jsonPayload = objectMapper.writeValueAsString(payload);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                .header("api-key", brevoApiKey.trim())
+                .header("Content-Type", "application/json")
+                .header("accept", "application/json")
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            throw new RuntimeException("Brevo API rejected request (HTTP " + response.statusCode() + "): " + response.body());
+        }
+    }
+
+    private void sendViaSmtp(String recipientEmail, String subject, String htmlBody, byte[] pdfBytes) throws Exception {
+        JavaMailSender mailSender = createMailSender();
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+
+        helper.setFrom(mailUsername, "SolarSaaS CleanEnergy");
+        helper.setTo(recipientEmail);
+        helper.setSubject(subject);
+        helper.setText(htmlBody, true);
+
+        String filename = "SolarSaaS-Analysis-Report.pdf";
+        helper.addAttachment(filename, new ByteArrayResource(pdfBytes), "application/pdf");
+
+        mailSender.send(mimeMessage);
     }
 
     private JavaMailSender createMailSender() {
@@ -155,37 +279,59 @@ public class EmailService {
                 </div>
                 <div class="content">
                   <p>Hello <strong>%s</strong>,</p>
-                  <p>Your latest rooftop solar analysis has been processed. Below is a summary of your system design and financial projections:</p>
+                  <p>Your technical rooftop solar assessment is ready. A detailed PDF report is attached to this email.</p>
                   
                   <div class="metric-box">
-                    <div class="metric-row"><span class="metric-label">Rooftop Area:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row"><span class="metric-label">Panel Count:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row"><span class="metric-label">System Size:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row"><span class="metric-label">Annual Solar Yield:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row"><span class="metric-label">Estimated Savings:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row"><span class="metric-label">Return on Investment:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row"><span class="metric-label">Weather Summary:</span><span class="metric-val">%s</span></div>
-                    <div class="metric-row" style="border-bottom:none;"><span class="metric-label">Battery Recommendation:</span><span class="metric-val">%s</span></div>
+                    <div class="metric-row">
+                      <span class="metric-label">Estimated System Size</span>
+                      <span class="metric-val">%s (%s)</span>
+                    </div>
+                    <div class="metric-row">
+                      <span class="metric-label">Rooftop Area</span>
+                      <span class="metric-val">%s</span>
+                    </div>
+                    <div class="metric-row">
+                      <span class="metric-label">Annual Solar Generation</span>
+                      <span class="metric-val">%s</span>
+                    </div>
+                    <div class="metric-row">
+                      <span class="metric-label">Estimated Annual Savings</span>
+                      <span class="metric-val">%s</span>
+                    </div>
+                    <div class="metric-row">
+                      <span class="metric-label">Return on Investment (ROI)</span>
+                      <span class="metric-val">%s</span>
+                    </div>
+                    <div class="metric-row">
+                      <span class="metric-label">Solar Irradiance Factor</span>
+                      <span class="metric-val">%s</span>
+                    </div>
+                    <div class="metric-row" style="border-bottom: none;">
+                      <span class="metric-label">Battery Storage Advice</span>
+                      <span class="metric-val">%s</span>
+                    </div>
                   </div>
 
-                  <p style="font-size: 13px; color: #475569;">
-                    The complete official PDF feasibility report is attached to this email for your records and client proposals.
+                  <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
+                    To view interactive solar ray tracing, 3D azimuth shadows, panel layouts, or submit formal EPC installation proposals, sign in to your SolarSaaS dashboard.
                   </p>
                 </div>
                 <div class="footer">
-                  SolarSaaS Platform • Enterprise Solar Photovoltaic Analytics
+                  <p>&copy; 2026 SolarSaaS Platform. Clean Energy Technology for Everyone.</p>
                 </div>
               </div>
             </body>
             </html>
-            """.formatted(name, area, panels, systemSize, generation, savings, roi, weather, battery);
+            """.formatted(name, systemSize, panels, area, generation, savings, roi, weather, battery);
     }
 
-    private String format(Object num) {
-        if (num == null) return "-";
-        if (num instanceof Number) {
-            return numberFormat.format(num);
-        }
-        return num.toString();
+    private String format(Double value) {
+        if (value == null) return "N/A";
+        return numberFormat.format(Math.round(value * 10.0) / 10.0);
+    }
+
+    private String format(Integer value) {
+        if (value == null) return "N/A";
+        return numberFormat.format(value);
     }
 }
