@@ -441,13 +441,16 @@ export const GoogleSolarMap = ({
 
     if (!showSolarPanels || !solarPanels || solarPanels.length === 0) return;
 
-    // 1. If user defined/auto-selected a rooftop boundary polygon, clip panels strictly inside that boundary!
-    let eligiblePanels = [...solarPanels];
+    // 1. If user defined a rooftop boundary polygon, clip panels strictly inside that boundary!
+    let eligiblePanels = [];
     if (polygonCoordinates && polygonCoordinates.length >= 3) {
-      eligiblePanels = eligiblePanels.filter((panel) => {
+      eligiblePanels = solarPanels.filter((panel) => {
         if (!panel.center) return false;
         return isPointInPolygon([panel.center.latitude, panel.center.longitude], polygonCoordinates);
       });
+    } else {
+      // If no polygon is drawn, keep canvas clean until user outlines the target rooftop
+      eligiblePanels = [];
     }
 
     // 2. Sort by solar radiance / yearly energy output descending to guarantee MAXIMUM THROUGHPUT first

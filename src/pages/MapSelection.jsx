@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   AlertCircle, 
@@ -10,9 +10,7 @@ import {
   ArrowRight, 
   Trash2, 
   Zap,
-  Sliders,
-  Sparkles,
-  Maximize2
+  Cpu,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import AnalysisResults from '../components/map/AnalysisResults';
@@ -24,6 +22,7 @@ import { geocodingService } from '../services/geocodingService';
 import { weatherApiService } from '../services/weatherApiService';
 import { googleSolarService } from '../services/googleSolarService';
 import { applyWeatherAdjustment, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
+import { isPointInPolygon } from '../utils/geoUtils';
 
 const DEFAULT_POSITION = [12.9716, 77.5946];
 
@@ -140,9 +139,6 @@ const MapSelection = () => {
         const insights = await googleSolarService.getBuildingInsights(markerPosition[0], markerPosition[1]);
         if (insights) {
           setGoogleSolarData(insights);
-          if (insights.maxArrayPanelsCount) {
-            setPanelCountSlider(Math.min(50, insights.maxArrayPanelsCount));
-          }
         }
       } catch (solarErr) {
         console.warn('[MapSelection] Google Solar API check:', solarErr);
@@ -171,7 +167,38 @@ const MapSelection = () => {
   };
 
   /**
-   * Synchronizes the selected rooftop and calculated analysis to ALL tabs in the sidebar:
+   * Filter Google Solar panels to ONLY those that fall strictly inside the user-drawn rooftop area
+   */
+  const panelsInDrawnArea = useMemo(() => {
+    if (!googleSolarData?.solarPanels || !polygonCoordinates || polygonCoordinates.length < 3) {
+      return [];
+    }
+    const filtered = googleSolarData.solarPanels.filter((panel) => {
+      if (!panel.center) return false;
+      return isPointInPolygon([panel.center.latitude, panel.center.longitude], polygonCoordinates);
+    });
+
+    // Sort by solar radiance / yearly energy output descending (Maximum Throughput first)
+    filtered.sort((a, b) => (b.yearlyEnergyDcKwh || 0) - (a.yearlyEnergyDcKwh || 0));
+    return filtered;
+  }, [googleSolarData, polygonCoordinates]);
+
+  // Keep slider bounded to the actual panel count of the drawn area
+  useEffect(() => {
+    if (panelsInDrawnArea.length > 0) {
+      setPanelCountSlider(panelsInDrawnArea.length);
+    }
+  }, [panelsInDrawnArea.length]);
+
+  // Energy throughput of the selected modules on the drawn rooftop
+  const activeThroughputKwh = useMemo(() => {
+    if (panelsInDrawnArea.length === 0) return 0;
+    const active = panelsInDrawnArea.slice(0, panelCountSlider);
+    return Math.round(active.reduce((acc, p) => acc + (p.yearlyEnergyDcKwh || 0), 0));
+  }, [panelsInDrawnArea, panelCountSlider]);
+
+  /**
+   * Synchronizes the user-drawn rooftop and calculated analysis to ALL tabs in the sidebar:
    * 1. Dashboard (/dashboard)
    * 2. Analysis (/analysis)
    * 3. Solar Potential (/solar-potential)
@@ -205,7 +232,6 @@ const MapSelection = () => {
         maxPanels: solarInsights.maxArrayPanelsCount,
         sunshineHours: solarInsights.maxSunshineHoursPerYear,
         carbonOffset: solarInsights.carbonOffsetFactorKgPerMwh,
-        arrayArea: solarInsights.maxArrayAreaMeters2,
         panelWattage: solarInsights.panelCapacityWatts,
         quality: solarInsights.quality,
       } : null,
@@ -252,26 +278,14 @@ const MapSelection = () => {
       });
 
       localStorage.setItem('latestAnalysis', JSON.stringify({ ...latestAnalysis, id: savedAnalysis.id }));
-      setSaveFeedback({ type: 'success', message: 'Rooftop selected & synced to Dashboard, Analysis, Solar Potential, and Optimizer!' });
+      setSaveFeedback({ type: 'success', message: 'Rooftop outline saved! All sidebar tabs (Dashboard, Analysis, Solar Potential, and AI Optimizer) are now synchronized.' });
     } catch (saveError) {
       setSaveFeedback({ 
         type: 'success', 
-        message: 'Rooftop selected & synced locally across all sidebar tabs!' 
+        message: 'Rooftop outline saved locally & synced across all sidebar tabs!' 
       });
     }
   }, [markerPosition, markerLabel, weatherData]);
-
-  // Apply Google Solar detected area directly without forcing an inaccurate box
-  const handleApplyDetectedArea = useCallback(() => {
-    if (!googleSolarData?.maxArrayAreaMeters2) return;
-    const detectedArea = Math.round(googleSolarData.maxArrayAreaMeters2);
-    setArea(detectedArea);
-    syncToAllTabs(detectedArea, polygonCoordinates, googleSolarData);
-    setSaveFeedback({
-      type: 'success',
-      message: `Applied Google Solar rooftop area (${detectedArea} m²) across all tabs! You can also outline the rooftop below.`,
-    });
-  }, [googleSolarData, polygonCoordinates, syncToAllTabs]);
 
   // Manual point-and-click polygon completion
   const handlePolygonChange = useCallback((coordinates) => {
@@ -280,7 +294,7 @@ const MapSelection = () => {
     setArea(calculatedArea);
     setIsDrawing(false);
 
-    // Immediate sync across all tabs
+    // Immediate sync across all tabs for the user's specific drawn rooftop area
     syncToAllTabs(calculatedArea, coordinates, googleSolarData);
   }, [googleSolarData, syncToAllTabs]);
 
@@ -293,23 +307,20 @@ const MapSelection = () => {
   }, [isDrawing, updateLocation]);
 
   const handleRunAnalysis = async () => {
-    const effectiveArea = area || (googleSolarData?.maxArrayAreaMeters2 ? Math.round(googleSolarData.maxArrayAreaMeters2) : 0);
-
-    if (!effectiveArea) {
-      setError('Please select a rooftop area using "Auto-Select Detected Rooftop" or "Draw Custom Rooftop Outline".');
+    if (!area || polygonCoordinates.length < 3) {
+      setError('Please draw an outline around the rooftop section on the map to calculate its area and run analysis.');
       return;
     }
 
     setError('');
     setIsSavingAnalysis(true);
-    await syncToAllTabs(effectiveArea, polygonCoordinates, googleSolarData);
+    await syncToAllTabs(area, polygonCoordinates, googleSolarData);
     setIsSavingAnalysis(false);
   };
 
   const estimatedPanels = Math.floor(area / 2.5);
 
-  // Compute flux bounding box from Google Solar API if available
-  const googleFluxBounds = React.useMemo(() => {
+  const googleFluxBounds = useMemo(() => {
     if (googleSolarData?.boundingBox) {
       return {
         south: googleSolarData.boundingBox.sw.latitude,
@@ -326,7 +337,7 @@ const MapSelection = () => {
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Map Selection & Rooftop Analysis</h1>
-          <p className="text-slate-500 mt-1">Select a building rooftop on Google Satellite engine. Synced directly to all sidebar modules.</p>
+          <p className="text-slate-500 mt-1">Outline a specific rooftop area on the Google Satellite engine to optimize panels and calculate solar yield.</p>
         </div>
       </div>
 
@@ -342,7 +353,7 @@ const MapSelection = () => {
             error={error}
           />
 
-          {/* Google Solar API Live Insights Card */}
+          {/* Google Solar Photogrammetry Context Badge */}
           {isLoadingSolarData && (
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs">
               <Zap size={15} className="text-amber-500 animate-bounce" />
@@ -351,11 +362,11 @@ const MapSelection = () => {
           )}
 
           {googleSolarData && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-4 space-y-3 text-xs shadow-sm">
+            <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-3.5 space-y-2.5 text-xs shadow-sm">
               <div className="flex items-center justify-between font-bold text-amber-900">
                 <span className="flex items-center gap-1.5">
-                  <Sun size={16} className="text-amber-600" />
-                  Google Solar Building Insights
+                  <Sun size={15} className="text-amber-600" />
+                  Google Solar Climate Profile
                 </span>
                 <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-mono font-semibold">
                   {googleSolarData.quality} QUALITY
@@ -363,78 +374,24 @@ const MapSelection = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-slate-700">
-                <div className="bg-white/90 p-2.5 rounded-lg border border-amber-200/70">
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Max Panels</span>
-                  <span className="font-extrabold text-base text-slate-900">{googleSolarData.maxArrayPanelsCount}</span>
-                </div>
-                <div className="bg-white/90 p-2.5 rounded-lg border border-amber-200/70">
+                <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70">
                   <span className="text-[10px] text-slate-500 block uppercase font-medium">Sunshine/Yr</span>
-                  <span className="font-extrabold text-base text-slate-900">{Math.round(googleSolarData.maxSunshineHoursPerYear)}h</span>
+                  <span className="font-extrabold text-sm text-slate-900">{Math.round(googleSolarData.maxSunshineHoursPerYear)}h</span>
                 </div>
-                <div className="bg-white/90 p-2.5 rounded-lg border border-amber-200/70">
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Rooftop Area</span>
-                  <span className="font-extrabold text-base text-slate-900">{Math.round(googleSolarData.maxArrayAreaMeters2)} m²</span>
-                </div>
-                <div className="bg-white/90 p-2.5 rounded-lg border border-amber-200/70">
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Panel Wattage</span>
-                  <span className="font-extrabold text-base text-slate-900">{googleSolarData.panelCapacityWatts} W</span>
+                <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70">
+                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Standard Module</span>
+                  <span className="font-extrabold text-sm text-slate-900">{googleSolarData.panelCapacityWatts} W</span>
                 </div>
               </div>
-
-              {/* Quick Apply Area Button */}
-              <button
-                type="button"
-                onClick={handleApplyDetectedArea}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
-              >
-                <Sparkles size={14} className="text-amber-400" />
-                <span>Use Detected Area ({Math.round(googleSolarData.maxArrayAreaMeters2)} m²)</span>
-              </button>
-
-              {/* Solar Panels on Roof Toggle (Google Solar Demo feature) */}
-              {googleSolarData.solarPanels && googleSolarData.solarPanels.length > 0 && (
-                <div className="pt-2 border-t border-amber-200/60 space-y-2">
-                  <div className="flex items-center justify-between text-slate-700">
-                    <span className="font-medium text-[11px]">Show Panels on Roof</span>
-                    <input
-                      type="checkbox"
-                      checked={showSolarPanels}
-                      onChange={(e) => setShowSolarPanels(e.target.checked)}
-                      className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
-                    />
-                  </div>
-
-                  {showSolarPanels && (
-                    <div className="space-y-2 pt-1">
-                      <div className="flex items-center justify-between text-[11px] text-slate-700">
-                        <span className="font-medium">Active Modules:</span>
-                        <span className="font-extrabold text-blue-700">{panelCountSlider} / {googleSolarData.maxArrayPanelsCount}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="5"
-                        max={googleSolarData.maxArrayPanelsCount}
-                        value={panelCountSlider}
-                        onChange={(e) => setPanelCountSlider(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="flex items-center justify-between text-[10px] bg-blue-50/80 p-2 rounded-lg border border-blue-200/60 text-slate-700 font-medium">
-                        <span>Solar Yield: <strong className="text-blue-900 font-extrabold">{Math.round(panelCountSlider * 705).toLocaleString('en-IN')} kWh/yr</strong></span>
-                        <span className="text-emerald-700 font-bold bg-emerald-100/80 px-1.5 py-0.5 rounded">Max Throughput</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
           <div className="h-px w-full bg-slate-100" />
 
-          {/* Rooftop Measurement & Selection Tools */}
+          {/* Rooftop Boundary Drawing & Measurement Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">Rooftop Boundary</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">Target Rooftop Boundary</h3>
               {polygonCoordinates.length > 0 && (
                 <button
                   type="button"
@@ -442,7 +399,7 @@ const MapSelection = () => {
                   className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors cursor-pointer"
                 >
                   <Trash2 size={13} />
-                  <span>Clear Selection</span>
+                  <span>Clear Outline</span>
                 </button>
               )}
             </div>
@@ -452,44 +409,83 @@ const MapSelection = () => {
               onClick={() => setIsDrawing((prev) => !prev)}
               className={`flex w-full items-center justify-center space-x-2 rounded-xl py-3 font-semibold text-xs transition-all cursor-pointer ${
                 isDrawing
-                  ? 'border-2 border-blue-500 bg-blue-50 text-blue-700 shadow-md ring-2 ring-blue-200'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  ? 'border-2 border-blue-600 bg-blue-50 text-blue-700 shadow-lg ring-2 ring-blue-200 animate-pulse'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'
               }`}
             >
-              <Compass size={18} className={isDrawing ? 'animate-spin text-blue-600' : ''} />
-              <span>{isDrawing ? 'Drawing Active (Click Rooftop Corners)' : 'Draw Custom Rooftop Outline'}</span>
+              <Compass size={18} className={isDrawing ? 'animate-spin text-blue-600' : 'text-slate-600'} />
+              <span>{isDrawing ? 'Drawing Active (Click Roof Corners)' : 'Draw Custom Rooftop Outline'}</span>
             </button>
 
-            <div className="rounded-xl border border-primary-100 bg-primary-50 p-4">
-              <div className="mb-1 text-xs font-semibold text-primary-600 uppercase tracking-wider">Active Rooftop Area</div>
-              <div className="flex items-baseline space-x-1">
-                <span className="text-3xl font-extrabold text-primary-700">{area.toLocaleString('en-IN')}</span>
-                <span className="font-semibold text-primary-600">m²</span>
+            {/* Active Drawn Rooftop Area Display */}
+            {polygonCoordinates.length >= 3 && area > 0 ? (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Selected Rooftop Area</span>
+                  <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">Custom Area</span>
+                </div>
+                <div className="flex items-baseline space-x-1">
+                  <span className="text-3xl font-extrabold text-blue-950">{area.toLocaleString('en-IN')}</span>
+                  <span className="font-semibold text-blue-700">m²</span>
+                </div>
+                <p className="text-xs text-blue-700">
+                  Fits approx. <strong className="text-blue-950">{estimatedPanels}</strong> standard panels
+                  {panelsInDrawnArea.length > 0 && ` (${panelsInDrawnArea.length} Google Solar modules in bounds)`}.
+                </p>
+
+                {/* Show Panels on Roof Toggle inside drawn perimeter */}
+                {panelsInDrawnArea.length > 0 && (
+                  <div className="pt-2 border-t border-blue-200/60 space-y-2">
+                    <div className="flex items-center justify-between text-slate-700">
+                      <span className="font-medium text-[11px]">Show Panels Inside Rooftop</span>
+                      <input
+                        type="checkbox"
+                        checked={showSolarPanels}
+                        onChange={(e) => setShowSolarPanels(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                      />
+                    </div>
+
+                    {showSolarPanels && (
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-700">
+                          <span>Active Modules in Area:</span>
+                          <span className="font-extrabold text-blue-800">{panelCountSlider} / {panelsInDrawnArea.length}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max={panelsInDrawnArea.length}
+                          value={panelCountSlider}
+                          onChange={(e) => setPanelCountSlider(Number(e.target.value))}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="flex items-center justify-between text-[10px] bg-white p-2 rounded-lg border border-blue-200/70 text-slate-700 font-medium shadow-2xs">
+                          <span>Solar Yield: <strong className="text-blue-900 font-bold">{activeThroughputKwh.toLocaleString('en-IN')} kWh/yr</strong></span>
+                          <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Max Radiance First</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <p className="mt-1.5 text-xs text-primary-600">
-                Suitable for approx. <strong className="text-primary-800">{estimatedPanels.toLocaleString('en-IN')}</strong> commercial panels.
-              </p>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-4 text-center text-xs text-slate-500 space-y-1">
+                <p className="font-semibold text-slate-700">No Rooftop Area Selected</p>
+                <p>Click "Draw Custom Rooftop Outline" and click the corners of the building on the satellite map.</p>
+              </div>
+            )}
           </div>
 
           <div className="flex-1" />
 
           {/* Action & Navigation Buttons (Linked directly to other tabs) */}
           <div className="space-y-2 mt-4">
+            {/* Primary CTA: AI Panel Optimizer */}
             <button
               type="button"
-              onClick={handleRunAnalysis}
-              disabled={isSavingAnalysis || (!area && !googleSolarData)}
-              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-3.5 font-bold text-white shadow-md transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-            >
-              <span>{isSavingAnalysis ? 'Syncing Modules...' : 'Save & Sync Analysis'}</span>
-              <Layers size={18} className="transition-transform group-hover:translate-x-1" />
-            </button>
-
-            <button
-              type="button"
+              disabled={!area || polygonCoordinates.length < 3}
               onClick={() => {
-                const effectiveArea = area || (googleSolarData?.maxArrayAreaMeters2 ? Math.round(googleSolarData.maxArrayAreaMeters2) : 0);
                 const rooftopData = {
                   latitude: markerPosition[0],
                   longitude: markerPosition[1],
@@ -497,18 +493,53 @@ const MapSelection = () => {
                   location: markerLabel,
                   locationName: markerLabel,
                   polygonCoordinates,
-                  roofArea: effectiveArea,
-                  area: effectiveArea,
+                  roofArea: area,
+                  area: area,
+                  googleSolarData,
+                };
+                localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
+                navigate('/panel-optimizer', { state: { rooftop: rooftopData } });
+              }}
+              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-blue-600 hover:bg-blue-700 py-3.5 font-bold text-white shadow-md shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <Cpu size={18} />
+              <span>AI Panel Optimizer</span>
+              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRunAnalysis}
+              disabled={isSavingAnalysis || !area || polygonCoordinates.length < 3}
+              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-3 font-semibold text-xs text-white shadow-md transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            >
+              <span>{isSavingAnalysis ? 'Syncing...' : 'Save & Sync Analysis'}</span>
+              <Layers size={16} className="transition-transform group-hover:translate-x-1" />
+            </button>
+
+            <button
+              type="button"
+              disabled={!area || polygonCoordinates.length < 3}
+              onClick={() => {
+                const rooftopData = {
+                  latitude: markerPosition[0],
+                  longitude: markerPosition[1],
+                  address: markerLabel,
+                  location: markerLabel,
+                  locationName: markerLabel,
+                  polygonCoordinates,
+                  roofArea: area,
+                  area: area,
                   googleSolarData,
                 };
                 localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
                 navigate('/solar-potential', { state: { rooftop: rooftopData } });
               }}
-              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3.5 font-bold text-white shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3 font-semibold text-xs text-white shadow-md shadow-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <Sun size={18} />
+              <Sun size={16} />
               <span>Assess Solar Potential</span>
-              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+              <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </button>
           </div>
         </div>

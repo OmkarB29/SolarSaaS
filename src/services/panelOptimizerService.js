@@ -1,4 +1,5 @@
 import { apiUrl } from './apiConfig';
+import { generateLocalOptimizedLayouts } from '../utils/localPanelOptimizer';
 
 const getStoredAuth = () => {
   try {
@@ -34,19 +35,38 @@ const getApiError = async (response) => {
 export const panelOptimizerService = {
   /**
    * Generate 3 optimized panel layouts (Maximum Capacity, Balanced, High Efficiency)
+   * Strictly tailored for the user-selected or drawn rooftop polygon.
    */
   async optimizeLayouts(requestData) {
-    const response = await fetch(apiUrl('/api/panel-optimizer/optimize'), {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(requestData),
-    });
+    const token = getStoredAuth()?.token;
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
 
-    if (!response.ok) {
-      throw new Error(await getApiError(response));
+    try {
+      const response = await fetch(apiUrl('/api/panel-optimizer/optimize'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestData),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return data;
+        }
+      }
+    } catch (networkErr) {
+      console.warn('Backend optimizer unavailable or network timeout, using local vector optimizer:', networkErr);
     }
 
-    return response.json();
+    // High-performance client-side fallback inside drawn boundary
+    return generateLocalOptimizedLayouts(
+      requestData.polygonCoordinates,
+      requestData.panelDimensions,
+      requestData.annualIrradiance
+    );
   },
 
   /**
