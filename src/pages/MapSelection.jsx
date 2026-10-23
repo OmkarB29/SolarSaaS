@@ -261,30 +261,17 @@ const MapSelection = () => {
     }
   }, [markerPosition, markerLabel, weatherData]);
 
-  // 1-Click Auto-Detect Rooftop Boundary from Google Solar API (matching Google Solar Demo)
-  const handleAutoSelectRooftop = useCallback(() => {
-    if (!googleSolarData?.boundingBox) return;
-    const { sw, ne } = googleSolarData.boundingBox;
-
-    // Convert building bounding box to clockwise polygon
-    const boundingPolygon = [
-      [ne.latitude, sw.longitude], // North-West
-      [ne.latitude, ne.longitude], // North-East
-      [sw.latitude, ne.longitude], // South-East
-      [sw.latitude, sw.longitude], // South-West
-    ];
-
-    const detectedArea = googleSolarData.maxArrayAreaMeters2 
-      ? Math.round(googleSolarData.maxArrayAreaMeters2)
-      : calculateRooftopArea(boundingPolygon);
-
-    setPolygonCoordinates(boundingPolygon);
+  // Apply Google Solar detected area directly without forcing an inaccurate box
+  const handleApplyDetectedArea = useCallback(() => {
+    if (!googleSolarData?.maxArrayAreaMeters2) return;
+    const detectedArea = Math.round(googleSolarData.maxArrayAreaMeters2);
     setArea(detectedArea);
-    setIsDrawing(false);
-
-    // Immediate sync across all tabs
-    syncToAllTabs(detectedArea, boundingPolygon, googleSolarData);
-  }, [googleSolarData, syncToAllTabs]);
+    syncToAllTabs(detectedArea, polygonCoordinates, googleSolarData);
+    setSaveFeedback({
+      type: 'success',
+      message: `Applied Google Solar rooftop area (${detectedArea} m²) across all tabs! You can also outline the rooftop below.`,
+    });
+  }, [googleSolarData, polygonCoordinates, syncToAllTabs]);
 
   // Manual point-and-click polygon completion
   const handlePolygonChange = useCallback((coordinates) => {
@@ -394,14 +381,14 @@ const MapSelection = () => {
                 </div>
               </div>
 
-              {/* 1-Click Auto-Select Rooftop Button */}
+              {/* Quick Apply Area Button */}
               <button
                 type="button"
-                onClick={handleAutoSelectRooftop}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                onClick={handleApplyDetectedArea}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
               >
-                <Sparkles size={14} className="text-amber-300" />
-                <span>Auto-Select Rooftop ({Math.round(googleSolarData.maxArrayAreaMeters2)} m²)</span>
+                <Sparkles size={14} className="text-amber-400" />
+                <span>Use Detected Area ({Math.round(googleSolarData.maxArrayAreaMeters2)} m²)</span>
               </button>
 
               {/* Solar Panels on Roof Toggle (Google Solar Demo feature) */}
