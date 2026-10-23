@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { loadGoogleMapsSdk, resetGoogleMapsLoader } from '../../services/googleMapsLoader';
 import { useSolarFluxOverlay } from './useSolarFluxOverlay';
-import { Layers, MapPin, Eye, EyeOff, RotateCcw, AlertTriangle, ExternalLink } from 'lucide-react';
+import LeafletSatelliteFallback from './LeafletSatelliteFallback';
+import { Layers, Eye, EyeOff, RotateCcw, AlertTriangle, X, HelpCircle, CheckCircle2 } from 'lucide-react';
 
 const DEFAULT_CENTER = { lat: 12.9716, lng: 77.5946 }; // Bengaluru Default
 
@@ -31,6 +32,7 @@ export const GoogleSolarMap = ({
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [authBlockedError, setAuthBlockedError] = useState(false);
+  const [showInstructionsModal, setShowInstructionsModal] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [mapType, setMapType] = useState('hybrid');
   const [fluxEnabled, setFluxEnabled] = useState(initialFlux);
@@ -39,19 +41,19 @@ export const GoogleSolarMap = ({
   );
   const [tempApiKeyInput, setTempApiKeyInput] = useState('');
 
-  // Catch Google Maps authentication / restriction errors (ApiTargetBlockedMapError, etc.)
+  // Intercept Google Maps auth failure (ApiTargetBlockedMapError, etc.)
   useEffect(() => {
-    const originalAuthFailure = window.gm_authFailure;
-    window.gm_authFailure = () => {
-      console.warn('[GoogleSolarMap] gm_authFailure fired: API key restriction blocking Maps JavaScript API.');
+    const handleAuthFailure = () => {
+      console.warn('[GoogleSolarMap] gm_authFailure fired: Switching to high-res satellite backup.');
       setAuthBlockedError(true);
-      if (typeof originalAuthFailure === 'function') {
-        originalAuthFailure();
-      }
+      setIsSdkReady(false);
     };
 
+    window.gm_authFailure = handleAuthFailure;
     return () => {
-      window.gm_authFailure = originalAuthFailure;
+      if (window.gm_authFailure === handleAuthFailure) {
+        window.gm_authFailure = null;
+      }
     };
   }, []);
 
@@ -86,95 +88,104 @@ export const GoogleSolarMap = ({
 
   // 2. Initialize Google Map Instance
   useEffect(() => {
-    if (!isSdkReady || !containerRef.current || mapRef.current) return;
+    if (!isSdkReady || authBlockedError || !containerRef.current || mapRef.current) return;
 
-    const initialCenter = Array.isArray(center)
-      ? { lat: center[0], lng: center[1] }
-      : center || DEFAULT_CENTER;
+    try {
+      const initialCenter = Array.isArray(center)
+        ? { lat: center[0], lng: center[1] }
+        : center || DEFAULT_CENTER;
 
-    const map = new window.google.maps.Map(containerRef.current, {
-      center: initialCenter,
-      zoom,
-      mapId,
-      mapTypeId: window.google.maps.MapTypeId.HYBRID, // Satellite with vector street/building overlays
-      tilt: 0, // Top-down Nadir view for accurate rooftop geometry
-      streetViewControl: false,
-      mapTypeControl: false,
-      fullscreenControl: false,
-      zoomControl: true,
-      zoomControlOptions: {
-        position: window.google.maps.ControlPosition.RIGHT_BOTTOM,
-      },
-    });
+      const map = new window.google.maps.Map(containerRef.current, {
+        center: initialCenter,
+        zoom,
+        mapId,
+        mapTypeId: window.google.maps.MapTypeId.HYBRID,
+        tilt: 0,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+        zoomControl: true,
+        zoomControlOptions: {
+          position: window.google.maps.ControlPosition.RIGHT_BOTTOM,
+        },
+      });
 
-    mapRef.current = map;
+      mapRef.current = map;
 
-    // Coordinate state handler: Map Click
-    const clickListener = map.addListener('click', (e) => {
-      if (!e.latLng) return;
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      if (onMapClick) {
-        onMapClick({
-          lat,
-          lng,
-          latLngBounds: map.getBounds(),
-        });
-      }
-    });
-
-    // Coordinate state handler: Idle
-    const idleListener = map.addListener('idle', () => {
-      if (onBoundsChange) {
-        const b = map.getBounds();
-        if (b) {
-          const ne = b.getNorthEast();
-          const sw = b.getSouthWest();
-          onBoundsChange({
-            north: ne.lat(),
-            east: ne.lng(),
-            south: sw.lat(),
-            west: sw.lng(),
-            zoom: map.getZoom(),
-            center: { lat: map.getCenter().lat(), lng: map.getCenter().lng() },
-          });
+      // Coordinate state handler: Map Click
+      const clickListener = map.addListener('click', (e) => {
+        if (!e.latLng) return;
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        if (onMapClick) {
+          onMapClick({ lat, lng, latLngBounds: map.getBounds() });
         }
-      }
-    });
+      });
 
-    return () => {
-      window.google.maps.event.removeListener(clickListener);
-      window.google.maps.event.removeListener(idleListener);
-      window.google.maps.event.clearInstanceListeners(map);
-      mapRef.current = null;
-    };
-  }, [isSdkReady, mapId]);
+      // Coordinate state handler: Idle
+      const idleListener = map.addListener('idle', () => {
+        if (onBoundsChange) {
+          const b = map.getBounds();
+          if (b) {
+            const ne = b.getNorthEast();
+            const sw = b.getSouthWest();
+            onBoundsChange({
+              north: ne.lat(),
+              east: ne.lng(),
+              south: sw.lat(),
+              west: sw.lng(),
+              zoom: map.getZoom(),
+              center: { lat: map.getCenter().lat(), lng: map.getCenter().lng() },
+            });
+          }
+        }
+      });
+
+      return () => {
+        window.google.maps.event.removeListener(clickListener);
+        window.google.maps.event.removeListener(idleListener);
+        window.google.maps.event.clearInstanceListeners(map);
+        mapRef.current = null;
+      };
+    } catch (initErr) {
+      console.warn('[GoogleSolarMap] Map constructor failed:', initErr);
+      setAuthBlockedError(true);
+    }
+  }, [isSdkReady, authBlockedError, mapId]);
 
   // 3. Camera Sync: Bounds & Center
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || authBlockedError) return;
 
-    if (bounds && Array.isArray(bounds) && bounds.length === 4) {
-      const [south, north, west, east] = bounds;
-      const gBounds = new window.google.maps.LatLngBounds(
-        new window.google.maps.LatLng(south, west),
-        new window.google.maps.LatLng(north, east)
-      );
-      map.fitBounds(gBounds, 32);
-    } else if (center) {
-      const targetCenter = Array.isArray(center) ? { lat: center[0], lng: center[1] } : center;
-      map.panTo(targetCenter);
+    try {
+      if (bounds && Array.isArray(bounds) && bounds.length === 4) {
+        const [south, north, west, east] = bounds;
+        const gBounds = new window.google.maps.LatLngBounds(
+          new window.google.maps.LatLng(south, west),
+          new window.google.maps.LatLng(north, east)
+        );
+        map.fitBounds(gBounds, 32);
+      } else if (center) {
+        const targetCenter = Array.isArray(center) ? { lat: center[0], lng: center[1] } : center;
+        map.panTo(targetCenter);
+      }
+    } catch {
+      // Safe boundary ignore
     }
-  }, [center, bounds]);
+  }, [center, bounds, authBlockedError]);
 
-  // 4. AdvancedMarkerElement (with fallback to classic google.maps.Marker)
+  // 4. Marker Overlay
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !markerPosition) {
+    if (!map || authBlockedError || !markerPosition) {
       if (markerRef.current) {
-        if (markerRef.current.map !== undefined) markerRef.current.map = null;
-        if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
+        try {
+          if (markerRef.current.map !== undefined) markerRef.current.map = null;
+          if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
+        } catch {
+          // ignore
+        }
         markerRef.current = null;
       }
       return;
@@ -185,14 +196,17 @@ export const GoogleSolarMap = ({
       : markerPosition;
 
     if (markerRef.current) {
-      if (markerRef.current.map !== undefined) markerRef.current.map = null;
-      if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
+      try {
+        if (markerRef.current.map !== undefined) markerRef.current.map = null;
+        if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
+      } catch {
+        // ignore
+      }
       markerRef.current = null;
     }
 
-    // Try AdvancedMarkerElement first
-    if (window.google?.maps?.marker?.AdvancedMarkerElement) {
-      try {
+    try {
+      if (window.google?.maps?.marker?.AdvancedMarkerElement) {
         const markerDom = document.createElement('div');
         markerDom.className = 'flex flex-col items-center group cursor-pointer -translate-y-1/2';
         markerDom.innerHTML = `
@@ -220,135 +234,165 @@ export const GoogleSolarMap = ({
 
         markerRef.current = advancedMarker;
         return;
-      } catch (advancedMarkerErr) {
-        console.warn('[GoogleSolarMap] AdvancedMarkerElement fallback:', advancedMarkerErr);
       }
+    } catch (advancedMarkerErr) {
+      console.warn('[GoogleSolarMap] AdvancedMarkerElement caught:', advancedMarkerErr);
     }
 
-    // Classic Marker Fallback
-    if (window.google?.maps?.Marker) {
-      const classicMarker = new window.google.maps.Marker({
-        map,
-        position: pos,
-        title: markerLabel,
-        animation: window.google.maps.Animation.DROP,
-      });
-      markerRef.current = classicMarker;
+    try {
+      if (window.google?.maps?.Marker) {
+        const classicMarker = new window.google.maps.Marker({
+          map,
+          position: pos,
+          title: markerLabel,
+        });
+        markerRef.current = classicMarker;
+      }
+    } catch {
+      // Safe fallback ignore
     }
 
     return () => {
       if (markerRef.current) {
-        if (markerRef.current.map !== undefined) markerRef.current.map = null;
-        if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
+        try {
+          if (markerRef.current.map !== undefined) markerRef.current.map = null;
+          if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
+        } catch {
+          // ignore
+        }
         markerRef.current = null;
       }
     };
-  }, [markerPosition, markerLabel]);
+  }, [markerPosition, markerLabel, authBlockedError]);
 
   // 5. Render Rooftop Polygon Overlay
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !window.google?.maps) return;
+    if (!map || authBlockedError || !window.google?.maps) return;
 
     if (polygonRef.current) {
-      polygonRef.current.setMap(null);
+      try {
+        polygonRef.current.setMap(null);
+      } catch {
+        // ignore
+      }
       polygonRef.current = null;
     }
 
     if (!polygonCoordinates || polygonCoordinates.length < 3) return;
 
-    const path = polygonCoordinates.map((pt) =>
-      Array.isArray(pt) ? { lat: pt[0], lng: pt[1] } : pt
-    );
+    try {
+      const path = polygonCoordinates.map((pt) =>
+        Array.isArray(pt) ? { lat: pt[0], lng: pt[1] } : pt
+      );
 
-    const polygon = new window.google.maps.Polygon({
-      paths: path,
-      strokeColor: '#f59e0b',
-      strokeOpacity: 0.95,
-      strokeWeight: 3,
-      fillColor: '#f59e0b',
-      fillOpacity: 0.32,
-      editable: false,
-      draggable: false,
-      zIndex: 50,
-    });
+      const polygon = new window.google.maps.Polygon({
+        paths: path,
+        strokeColor: '#f59e0b',
+        strokeOpacity: 0.95,
+        strokeWeight: 3,
+        fillColor: '#f59e0b',
+        fillOpacity: 0.32,
+        editable: false,
+        draggable: false,
+        zIndex: 50,
+      });
 
-    polygon.setMap(map);
-    polygonRef.current = polygon;
+      polygon.setMap(map);
+      polygonRef.current = polygon;
+    } catch {
+      // Safe ignore
+    }
 
     return () => {
       if (polygonRef.current) {
-        polygonRef.current.setMap(null);
+        try {
+          polygonRef.current.setMap(null);
+        } catch {
+          // ignore
+        }
         polygonRef.current = null;
       }
     };
-  }, [polygonCoordinates]);
+  }, [polygonCoordinates, authBlockedError]);
 
   // 6. Drawing Manager: Rooftop Polygons
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !window.google?.maps?.drawing) return;
+    if (!map || authBlockedError || !window.google?.maps?.drawing) return;
 
     if (!isDrawingEnabled) {
       if (drawingManagerRef.current) {
-        drawingManagerRef.current.setMap(null);
+        try {
+          drawingManagerRef.current.setMap(null);
+        } catch {
+          // ignore
+        }
         drawingManagerRef.current = null;
       }
       return;
     }
 
-    const dm = new window.google.maps.drawing.DrawingManager({
-      drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
-      drawingControl: true,
-      drawingControlOptions: {
-        position: window.google.maps.ControlPosition.TOP_RIGHT,
-        drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
-      },
-      polygonOptions: {
-        fillColor: '#f59e0b',
-        fillOpacity: 0.35,
-        strokeColor: '#f59e0b',
-        strokeWeight: 3,
-        clickable: true,
-        editable: true,
-        zIndex: 60,
-      },
-    });
+    try {
+      const dm = new window.google.maps.drawing.DrawingManager({
+        drawingMode: window.google.maps.drawing.OverlayType.POLYGON,
+        drawingControl: true,
+        drawingControlOptions: {
+          position: window.google.maps.ControlPosition.TOP_RIGHT,
+          drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
+        },
+        polygonOptions: {
+          fillColor: '#f59e0b',
+          fillOpacity: 0.35,
+          strokeColor: '#f59e0b',
+          strokeWeight: 3,
+          clickable: true,
+          editable: true,
+          zIndex: 60,
+        },
+      });
 
-    dm.setMap(map);
-    drawingManagerRef.current = dm;
+      dm.setMap(map);
+      drawingManagerRef.current = dm;
 
-    const completeListener = window.google.maps.event.addListener(
-      dm,
-      'overlaycomplete',
-      (event) => {
-        if (event.type === window.google.maps.drawing.OverlayType.POLYGON) {
-          const drawnPoly = event.overlay;
-          const vertices = drawnPoly.getPath();
-          const coords = [];
-          for (let i = 0; i < vertices.getLength(); i++) {
-            const pt = vertices.getAt(i);
-            coords.push([pt.lat(), pt.lng()]);
+      const completeListener = window.google.maps.event.addListener(
+        dm,
+        'overlaycomplete',
+        (event) => {
+          if (event.type === window.google.maps.drawing.OverlayType.POLYGON) {
+            const drawnPoly = event.overlay;
+            const vertices = drawnPoly.getPath();
+            const coords = [];
+            for (let i = 0; i < vertices.getLength(); i++) {
+              const pt = vertices.getAt(i);
+              coords.push([pt.lat(), pt.lng()]);
+            }
+
+            if (onPolygonChange) {
+              onPolygonChange(coords);
+            }
+
+            drawnPoly.setMap(null);
+            dm.setDrawingMode(null);
           }
-
-          if (onPolygonChange) {
-            onPolygonChange(coords);
-          }
-
-          drawnPoly.setMap(null);
-          dm.setDrawingMode(null);
         }
-      }
-    );
+      );
 
-    return () => {
-      window.google.maps.event.removeListener(completeListener);
-      if (drawingManagerRef.current) {
-        drawingManagerRef.current.setMap(null);
-        drawingManagerRef.current = null;
-      }
-    };
-  }, [isDrawingEnabled, onPolygonChange]);
+      return () => {
+        window.google.maps.event.removeListener(completeListener);
+        if (drawingManagerRef.current) {
+          try {
+            drawingManagerRef.current.setMap(null);
+          } catch {
+            // ignore
+          }
+          drawingManagerRef.current = null;
+        }
+      };
+    } catch {
+      // Safe ignore
+    }
+  }, [isDrawingEnabled, onPolygonChange, authBlockedError]);
 
   // 7. Calculate or use fluxBounds for Solar Flux Overlay Hook
   const effectiveFluxBounds = React.useMemo(() => {
@@ -372,9 +416,12 @@ export const GoogleSolarMap = ({
     return null;
   }, [fluxBounds, polygonCoordinates, bounds]);
 
-  useSolarFluxOverlay(mapRef.current, effectiveFluxBounds, fluxEnabled);
+  useSolarFluxOverlay(
+    authBlockedError ? null : mapRef.current,
+    effectiveFluxBounds,
+    fluxEnabled
+  );
 
-  // Basemap switcher
   const handleMapTypeSwitch = (type) => {
     setMapType(type);
     if (mapRef.current && window.google?.maps) {
@@ -388,52 +435,13 @@ export const GoogleSolarMap = ({
     }
   };
 
-  // If Key is Blocked by API Restrictions (ApiTargetBlockedMapError)
-  if (authBlockedError) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900/95 p-6 text-white text-center">
-        <div className="max-w-md w-full rounded-2xl bg-slate-800 border border-amber-500/40 p-6 shadow-2xl backdrop-blur-md">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 mb-3">
-            <AlertTriangle className="h-6 w-6" />
-          </div>
-          <h3 className="text-lg font-bold text-white mb-1">
-            Enable Maps JavaScript API
-          </h3>
-          <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-            Your Google Cloud API key works for the <strong>Solar API</strong> (live data is active!), but needs <strong>Maps JavaScript API</strong> checked under its API restrictions to display the satellite map canvas.
-          </p>
-
-          <div className="rounded-xl bg-slate-950/90 p-3.5 text-left text-xs space-y-2 mb-4 border border-slate-700">
-            <div className="font-semibold text-amber-300 flex items-center justify-between">
-              <span>Quick 30-Second Fix in Google Cloud:</span>
-            </div>
-            <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px]">
-              <li>Switch to your open <strong>Keys & Credentials</strong> tab in Google Cloud Console</li>
-              <li>Click on your key name: <strong>Maps Platform API Key</strong></li>
-              <li>Scroll down to <strong>API restrictions</strong></li>
-              <li>In the dropdown list, check <strong className="text-amber-300">Maps JavaScript API</strong></li>
-              <li>Click <strong>Save</strong> at the bottom</li>
-            </ol>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAuthBlockedError(false);
-              setLoadError(null);
-              resetGoogleMapsLoader();
-              setIsSdkReady(false);
-              setRetryCount((c) => c + 1);
-            }}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3 font-bold text-xs text-slate-950 transition-all shadow-md shadow-amber-500/20 cursor-pointer"
-          >
-            <RotateCcw size={14} />
-            <span>I Saved It — Reload Satellite Map</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleRetryGoogleMaps = () => {
+    setAuthBlockedError(false);
+    setLoadError(null);
+    resetGoogleMapsLoader();
+    setIsSdkReady(false);
+    setRetryCount((c) => c + 1);
+  };
 
   // If Key is Missing
   if (loadError === 'MISSING_KEY') {
@@ -479,33 +487,110 @@ export const GoogleSolarMap = ({
     );
   }
 
-  // If other load error occurred
-  if (loadError && loadError !== 'MISSING_KEY') {
+  // If Key is Blocked by Google Cloud (ApiTargetBlockedMapError):
+  // Gracefully fallback to High-Resolution Satellite Map (Leaflet) with clear banner!
+  if (authBlockedError) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-6 text-center text-slate-300">
-        <div className="rounded-xl bg-red-950/40 border border-red-800/50 p-6 max-w-md">
-          <p className="text-red-400 font-bold mb-1">Google Maps Initialization Error</p>
-          <p className="text-xs text-slate-400 mb-4">{loadError}</p>
-          <button
-            onClick={() => {
-              resetGoogleMapsLoader();
-              setLoadError(null);
-              setIsSdkReady(false);
-              setRetryCount((prev) => prev + 1);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800 text-xs font-semibold text-white transition-all cursor-pointer"
-          >
-            <RotateCcw size={13} />
-            <span>Retry Connection</span>
-          </button>
+      <div className={`relative ${className} overflow-hidden`}>
+        {/* Top Warning & Status Banner */}
+        <div className="absolute top-3 left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/90 border border-amber-500/50 px-3.5 py-2 text-xs text-white shadow-xl backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="font-semibold text-amber-300">Satellite Backup Active:</span>
+            <span className="text-slate-300 hidden sm:inline">Google key is restricted to Solar API. Rooftop drawing & calculations working.</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowInstructionsModal(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold text-2xs border border-amber-400/40 transition-colors cursor-pointer"
+            >
+              <HelpCircle size={13} />
+              <span>How to Enable Google Maps</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRetryGoogleMaps}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-2xs transition-colors cursor-pointer shadow-sm"
+            >
+              <RotateCcw size={12} />
+              <span>Retry Google Maps</span>
+            </button>
+          </div>
         </div>
+
+        {/* Instructions Modal if user clicks for guide */}
+        {showInstructionsModal && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+            <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-700 p-6 text-white shadow-2xl relative">
+              <button
+                type="button"
+                onClick={() => setShowInstructionsModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-base mb-2">
+                <AlertTriangle size={20} />
+                <span>Enable Maps JavaScript API in Google Cloud</span>
+              </div>
+
+              <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+                Your key currently only has <strong>Solar API</strong> checked. To enable the native Google Maps canvas, check <strong>Maps JavaScript API</strong>:
+              </p>
+
+              <div className="rounded-xl bg-slate-950 p-3.5 space-y-2 text-xs border border-slate-800 text-slate-300">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <span>1. Go to your open <strong>Google Cloud Console &rarr; Keys & Credentials</strong> tab.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <span>2. Click on your key: <strong>Maps Platform API Key</strong>.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <span>3. Under <strong>API restrictions</strong>, select <strong>Maps JavaScript API</strong>.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <span>4. Click <strong>Save</strong> at the bottom.</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInstructionsModal(false);
+                  handleRetryGoogleMaps();
+                }}
+                className="mt-5 w-full rounded-xl bg-amber-500 hover:bg-amber-600 py-2.5 text-xs font-bold text-slate-950 transition-all cursor-pointer shadow-md shadow-amber-500/20"
+              >
+                I Updated It — Reload Google Maps
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* High-Resolution Satellite Fallback with Drawing & Polygon Support */}
+        <LeafletSatelliteFallback
+          center={center}
+          bounds={bounds}
+          markerPosition={markerPosition}
+          markerLabel={markerLabel}
+          polygonCoordinates={polygonCoordinates}
+          onPolygonChange={onPolygonChange}
+          isDrawingEnabled={isDrawingEnabled}
+        />
       </div>
     );
   }
 
+  // Normal Google Maps Canvas Render
   return (
     <div className={`relative ${className} overflow-hidden`}>
-      {/* Loading state indicator */}
       {!isSdkReady && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-sm">
           <div className="flex flex-col items-center space-y-3 text-amber-400">
@@ -524,7 +609,6 @@ export const GoogleSolarMap = ({
 
       {/* Floating Basemap & Solar Layer Controls */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        {/* Solar Flux Irradiance Toggle */}
         <button
           type="button"
           onClick={() => setFluxEnabled(!fluxEnabled)}
@@ -539,7 +623,6 @@ export const GoogleSolarMap = ({
           <span>Solar Flux Overlay</span>
         </button>
 
-        {/* Map Type Switcher */}
         <div className="flex rounded-lg overflow-hidden border border-slate-700 bg-slate-900/85 shadow-md backdrop-blur-md text-2xs font-semibold">
           <button
             type="button"
@@ -571,7 +654,6 @@ export const GoogleSolarMap = ({
         </div>
       </div>
 
-      {/* Actual Google Maps Canvas Element */}
       <div ref={containerRef} className="h-full w-full" />
     </div>
   );
