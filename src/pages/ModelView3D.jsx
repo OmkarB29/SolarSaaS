@@ -31,6 +31,10 @@ import {
   Sliders,
   CheckCircle2,
   Sparkles,
+  Eye,
+  Maximize2,
+  Compass,
+  ShieldCheck,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
@@ -40,6 +44,29 @@ import {
   SolarPanelMesh,
 } from '../components/scene3d/BuildingScene3D';
 import { buildScene3D } from '../services/scene3DService';
+import {
+  isPanelWithinBoundary,
+  generateStrictBoundedPanels,
+  getPolygonBoundingBox,
+  calculatePolygonArea,
+} from '../utils/geometry3D';
+
+/* ─── Sample Commercial L-Shaped Rooftop Preset ─── */
+const SAMPLE_COMMERCIAL_ROOFTOP = {
+  address: 'Commercial Logistics & Laundry Facility',
+  roofArea: 1095,
+  buildingHeight: 4.5,
+  targetPanels: 418,
+  // High-precision metric coordinates of an authentic L-shaped commercial complex
+  footprint: [
+    { x: -24.0, z: -18.0 },
+    { x: 26.0, z: -18.0 },
+    { x: 26.0, z: 2.0 },
+    { x: 6.0, z: 2.0 },
+    { x: 6.0, z: 22.0 },
+    { x: -24.0, z: 22.0 },
+  ],
+};
 
 /* ─── Storage Retrieval Helpers ─── */
 const getStoredRooftop = () => {
@@ -82,93 +109,98 @@ const normalizePolygon = (poly) => {
     .filter((pt) => !isNaN(pt[0]) && !isNaN(pt[1]) && (pt[0] !== 0 || pt[1] !== 0));
 };
 
-/**
- * Generate a procedural grid of panels inside the polygon bounding box
- * if the active state has 0 panels (ensures instant visual validation of 100+ panels).
- */
-const generateFallbackPanelGrid = (footprint, height = 4.0, targetCount = 120) => {
-  if (!footprint || footprint.length < 3) return [];
-
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  footprint.forEach((p) => {
-    minX = Math.min(minX, p.x);
-    maxX = Math.max(maxX, p.x);
-    minZ = Math.min(minZ, p.z);
-    maxZ = Math.max(maxZ, p.z);
-  });
-
-  const pWidth = 1.1;
-  const pLength = 2.1;
-  const gapX = 0.25;
-  const gapZ = 0.55;
-  const margin = 0.8;
-
-  // Simple 2D point-in-polygon test in local XZ space
-  const isInside = (x, z) => {
-    let inside = false;
-    for (let i = 0, j = footprint.length - 1; i < footprint.length; j = i++) {
-      const xi = footprint[i].x, zi = footprint[i].z;
-      const xj = footprint[j].x, zj = footprint[j].z;
-      const intersect = ((zi > z) !== (zj > z)) && (x < ((xj - xi) * (z - zi)) / (zj - zi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  };
-
-  const panels = [];
-  let num = 1;
-  for (let z = minZ + margin; z + pLength <= maxZ - margin; z += pLength + gapZ) {
-    for (let x = minX + margin; x + pWidth <= maxX - margin; x += pWidth + gapX) {
-      const cx = x + pWidth / 2;
-      const cz = z + pLength / 2;
-      if (isInside(cx, cz)) {
-        panels.push({
-          panelNumber: num++,
-          center: { x: cx, y: height + 0.05, z: cz },
-          widthMeters: pWidth,
-          lengthMeters: pLength,
-          powerWatts: 400,
-          orientation: 'PORTRAIT',
-          azimuthDegrees: 180,
-          tiltDegrees: 14,
-        });
-      }
-    }
-  }
-
-  return panels;
-};
-
 /* ─── 3D Scene Content Rig ─── */
 const SceneContent = ({
   sceneData,
   showPanels,
+  showParapet,
+  showWireframe,
+  showGrid,
+  showShadows,
   buildingHeight,
   onPanelHover,
+  cameraPreset,
 }) => {
-  const cameraTarget = useMemo(() => {
+  const controlsRef = useRef();
+
+  const centroid = useMemo(() => {
     if (!sceneData?.buildingFootprint?.length) return new THREE.Vector3(0, 0, 0);
-    const cx =
-      sceneData.buildingFootprint.reduce((s, p) => s + p.x, 0) /
-      sceneData.buildingFootprint.length;
-    const cz =
-      sceneData.buildingFootprint.reduce((s, p) => s + p.z, 0) /
-      sceneData.buildingFootprint.length;
+    const fp = sceneData.buildingFootprint;
+    const cx = fp.reduce((s, p) => s + (p.x ?? p[0]), 0) / fp.length;
+    const cz = fp.reduce((s, p) => s + (p.z ?? p[1]), 0) / fp.length;
     return new THREE.Vector3(cx, buildingHeight * 0.5, cz);
   }, [sceneData, buildingHeight]);
 
-  const cameraPos = useMemo(() => {
-    const r = Math.max(25, (sceneData?.sceneBoundingRadiusMeters || 35) * 1.6);
-    return new THREE.Vector3(r * 0.85, r * 0.95, r * 0.85);
+  const boundingRadius = useMemo(() => {
+    return Math.max(25, (sceneData?.sceneBoundingRadiusMeters || 35) * 1.5);
   }, [sceneData]);
 
-  const finalPanels = useMemo(() => {
-    if (!sceneData) return [];
-    if (sceneData.panels && sceneData.panels.length > 0) {
-      return sceneData.panels;
+  // Compute camera positions based on active preset
+  const cameraPos = useMemo(() => {
+    const r = boundingRadius;
+    const cx = centroid.x;
+    const cz = centroid.z;
+
+    if (cameraPreset === 'top') {
+      return new THREE.Vector3(cx, r * 1.5, cz + 0.01);
     }
-    // Automatically generate realistic 100+ panel array over the roof if empty
-    return generateFallbackPanelGrid(sceneData.buildingFootprint, buildingHeight);
+    if (cameraPreset === 'south') {
+      return new THREE.Vector3(cx, r * 0.65, cz + r * 1.1);
+    }
+    // Default Isometric
+    return new THREE.Vector3(cx + r * 0.85, r * 0.95, cz + r * 0.85);
+  }, [boundingRadius, centroid, cameraPreset]);
+
+  // Generate or filter solar panel array strictly within custom polygon
+  const finalPanels = useMemo(() => {
+    if (!sceneData?.buildingFootprint || sceneData.buildingFootprint.length < 3) {
+      return [];
+    }
+
+    const footprint = sceneData.buildingFootprint;
+    const targetCount = sceneData.targetPanelCount || 418;
+
+    // 1. If pre-computed candidate panels exist from backend or optimizer
+    if (Array.isArray(sceneData.panels) && sceneData.panels.length > 0) {
+      const strictlyBounded = sceneData.panels
+        .filter((panel) => {
+          const cx = panel.center?.x ?? 0;
+          const cz = panel.center?.z ?? 0;
+          const w = panel.widthMeters || 1.13;
+          const l = panel.lengthMeters || 2.27;
+          const azRad = THREE.MathUtils.degToRad((panel.azimuthDegrees || 180) - 180);
+          return isPanelWithinBoundary(cx, cz, w, l, azRad, footprint, 0.2);
+        })
+        .map((panel, idx) => ({
+          ...panel,
+          panelNumber: idx + 1,
+          center: {
+            ...panel.center,
+            y: buildingHeight + 0.05,
+          },
+        }));
+
+      if (strictlyBounded.length >= 15) {
+        return strictlyBounded.slice(0, targetCount);
+      }
+    }
+
+    // 2. Procedural generation pass: strict ray-casting + 4-corner boundary containment
+    return generateStrictBoundedPanels(
+      footprint,
+      buildingHeight,
+      targetCount,
+      {
+        panelWidth: 1.13,
+        panelLength: 2.27,
+        gapX: 0.22,
+        gapZ: 0.45,
+        margin: 0.25,
+        azimuthDegrees: 180,
+        tiltDegrees: 14,
+        powerWatts: 400,
+      }
+    );
   }, [sceneData, buildingHeight]);
 
   return (
@@ -181,24 +213,25 @@ const SceneContent = ({
         far={2000}
       />
       <OrbitControls
-        target={cameraTarget}
+        ref={controlsRef}
+        target={centroid}
         enableDamping
         dampingFactor={0.06}
         maxPolarAngle={Math.PI / 2 - 0.02}
         minDistance={5}
-        maxDistance={600}
+        maxDistance={650}
       />
 
       {/* ─── Studio Lighting Rig ─── */}
       <ambientLight intensity={0.65} color="#e6effa" />
-      
-      {/* Sun Directional Light with Sharp Soft Shadows */}
+
+      {/* Primary Directional Sunlight with Soft PCF Shadows */}
       <directionalLight
-        position={[65, 110, 45]}
+        position={[65, 110, 50]}
         intensity={2.6}
         color="#fffbeb"
-        castShadow
-        shadow-bias={-0.0004}
+        castShadow={showShadows}
+        shadow-bias={-0.0003}
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-camera-far={350}
@@ -213,47 +246,53 @@ const SceneContent = ({
       <hemisphereLight skyColor="#dbeafe" groundColor="#78716c" intensity={0.5} />
 
       {/* Ground Contact Shadow */}
-      <ContactShadows
-        position={[0, 0, 0]}
-        opacity={0.65}
-        scale={200}
-        blur={1.8}
-        far={50}
-        resolution={1024}
-        color="#0f172a"
-      />
+      {showShadows && (
+        <ContactShadows
+          position={[0, 0, 0]}
+          opacity={0.65}
+          scale={220}
+          blur={1.8}
+          far={50}
+          resolution={1024}
+          color="#0f172a"
+        />
+      )}
 
-      {/* Ground Grid Ruler */}
-      <Grid
-        args={[400, 400]}
-        position={[0, -0.01, 0]}
-        cellSize={1}
-        cellThickness={0.4}
-        cellColor="#94a3b8"
-        sectionSize={10}
-        sectionThickness={1.0}
-        sectionColor="#64748b"
-        fadeDistance={200}
-        fadeStrength={1.2}
-        followCamera={false}
-        infiniteGrid
-      />
+      {/* Architectural Ground Ruler Grid */}
+      {showGrid && (
+        <Grid
+          args={[400, 400]}
+          position={[0, -0.01, 0]}
+          cellSize={1}
+          cellThickness={0.4}
+          cellColor="#94a3b8"
+          sectionSize={10}
+          sectionThickness={1.0}
+          sectionColor="#64748b"
+          fadeDistance={220}
+          fadeStrength={1.2}
+          followCamera={false}
+          infiniteGrid
+        />
+      )}
 
-      {/* ─── Building Solid & Roof Deck ─── */}
+      {/* ─── Dynamic Extruded Building & Roof Deck ─── */}
       {sceneData?.buildingFootprint && (
         <>
           <BuildingMesh
             footprint={sceneData.buildingFootprint}
             height={buildingHeight}
+            showWireframe={showWireframe}
           />
           <RoofPlane
             footprint={sceneData.buildingFootprint}
             height={buildingHeight}
+            showParapet={showParapet}
           />
         </>
       )}
 
-      {/* ─── Solar Panel Array ─── */}
+      {/* ─── Strictly Bounded Solar Panel Matrix ─── */}
       {showPanels &&
         finalPanels.map((panel) => (
           <SolarPanelMesh
@@ -268,7 +307,7 @@ const SceneContent = ({
         <Environment preset="city" />
       </Suspense>
 
-      {/* Orientation Compass Widget */}
+      {/* Interactive Compass Gizmo */}
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
         <GizmoViewport
           axisColors={['#ef4444', '#22c55e', '#3b82f6']}
@@ -279,32 +318,43 @@ const SceneContent = ({
   );
 };
 
-/* ─── Interactive Panel Tooltip ─── */
+/* ─── Interactive Panel Telemetry Tooltip ─── */
 const PanelTooltip = ({ panel }) => {
   if (!panel) return null;
   return (
     <Html
       position={[
         panel.center?.x ?? 0,
-        (panel.center?.y ?? 4) + 1.6,
+        (panel.center?.y ?? 4.5) + 1.8,
         panel.center?.z ?? 0,
       ]}
       center
       occlude
     >
-      <div className="pointer-events-none bg-slate-950/95 text-white text-xs rounded-xl px-3 py-2 shadow-2xl border border-blue-500/40 min-w-[140px] backdrop-blur-md">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
-          <span className="font-bold text-blue-400">Module #{panel.panelNumber}</span>
+      <div className="pointer-events-none bg-slate-950/95 text-white text-xs rounded-xl px-3 py-2 shadow-2xl border border-blue-500/40 min-w-[150px] backdrop-blur-md">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-1 mb-1.5">
+          <span className="font-bold text-blue-400">PV Module #{panel.panelNumber}</span>
           <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded font-mono">
             {panel.powerWatts || 400}W
           </span>
         </div>
-        <p className="text-slate-300 text-[11px]">
-          {panel.widthMeters}m × {panel.lengthMeters}m • {panel.orientation || 'PORTRAIT'}
-        </p>
-        <div className="flex justify-between text-slate-400 text-[10px] pt-1">
-          <span>Tilt: {panel.tiltDegrees || 14}°</span>
-          <span>Azimuth: {panel.azimuthDegrees || 180}°</span>
+        <div className="space-y-1 text-[11px] text-slate-300">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Orientation:</span>
+            <span className="font-semibold text-white">{panel.orientation || 'PORTRAIT'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Azimuth / Tilt:</span>
+            <span className="font-mono text-emerald-400">
+              {panel.azimuthDegrees || 180}° / {panel.tiltDegrees || 14}°
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Status:</span>
+            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+              <ShieldCheck size={11} /> Bounded
+            </span>
+          </div>
         </div>
       </div>
     </Html>
@@ -316,78 +366,101 @@ const ModelView3D = () => {
   const [sceneData, setSceneData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isSampleSite, setIsSampleSite] = useState(false);
+
+  // Viewport toggles
   const [showPanels, setShowPanels] = useState(true);
+  const [showParapet, setShowParapet] = useState(true);
+  const [showWireframe, setShowWireframe] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [showShadows, setShowShadows] = useState(true);
   const [buildingHeight, setBuildingHeight] = useState(4.5);
   const [showStats, setShowStats] = useState(false);
   const [hoveredPanel, setHoveredPanel] = useState(null);
+  const [cameraPreset, setCameraPreset] = useState('iso'); // 'iso', 'top', 'south'
 
-  const loadScene = useCallback(async () => {
-    const rooftopData = getStoredRooftop() || getStoredAnalysis();
-    if (!rooftopData) {
-      setError(
-        'No rooftop boundary detected. Draw your target rooftop outline on the Map Selection page first.'
-      );
-      return;
-    }
+  const loadScene = useCallback(
+    async (forceSample = false) => {
+      const rooftopData = getStoredRooftop() || getStoredAnalysis();
 
-    const rawCoords =
-      rooftopData.polygonCoordinates || rooftopData.polygonCoordinatesJson;
-    const polygon = normalizePolygon(
-      typeof rawCoords === 'string' ? JSON.parse(rawCoords) : rawCoords
-    );
+      // Check if user has traced coordinates
+      const rawCoords =
+        rooftopData?.polygonCoordinates || rooftopData?.polygonCoordinatesJson;
+      const polygon = !forceSample
+        ? normalizePolygon(
+            typeof rawCoords === 'string' ? JSON.parse(rawCoords) : rawCoords
+          )
+        : null;
 
-    if (!polygon || polygon.length < 3) {
-      setError(
-        'Invalid rooftop boundary. Please trace the building rooftop on the Map page.'
-      );
-      return;
-    }
+      // If no valid polygon exists, fallback cleanly to high-fidelity commercial preset
+      if (!polygon || polygon.length < 3) {
+        setIsSampleSite(true);
+        setError('');
+        const bbox = getPolygonBoundingBox(SAMPLE_COMMERCIAL_ROOFTOP.footprint);
+        const maxR = Math.max(bbox.width, bbox.length) * 0.7;
 
-    // Check multiple candidate locations for panel arrays safely
-    const analysisData = getStoredAnalysis();
-    let candidatePanels = [];
-    if (Array.isArray(rooftopData.panels)) {
-      candidatePanels = rooftopData.panels;
-    } else if (Array.isArray(rooftopData.googleSolarData?.solarPanels)) {
-      candidatePanels = rooftopData.googleSolarData.solarPanels;
-    } else if (Array.isArray(rooftopData.googleSolarData?.panels)) {
-      candidatePanels = rooftopData.googleSolarData.panels;
-    } else if (Array.isArray(analysisData?.panels)) {
-      candidatePanels = analysisData.panels;
-    }
+        setSceneData({
+          address: SAMPLE_COMMERCIAL_ROOFTOP.address,
+          roofAreaM2: SAMPLE_COMMERCIAL_ROOFTOP.roofArea,
+          buildingHeightMeters: buildingHeight,
+          buildingFootprint: SAMPLE_COMMERCIAL_ROOFTOP.footprint,
+          targetPanelCount: SAMPLE_COMMERCIAL_ROOFTOP.targetPanels,
+          panels: [],
+          sceneBoundingRadiusMeters: maxR,
+        });
+        return;
+      }
 
-    setIsLoading(true);
-    setError('');
+      setIsSampleSite(false);
+      setIsLoading(true);
+      setError('');
 
-    try {
-      const payload = {
-        polygonCoordinates: polygon,
-        panels: candidatePanels,
-        buildingHeightMeters: buildingHeight,
-        layoutMode: analysisData?.layoutMode || 'BALANCED',
-        address:
-          rooftopData.address ||
-          rooftopData.location ||
-          rooftopData.locationName ||
-          'Target Installation Site',
-        roofAreaM2: rooftopData.roofArea || rooftopData.area || 0,
-        systemCapacityKw:
-          analysisData?.systemCapacityKw ||
-          analysisData?.systemSize ||
-          (candidatePanels.length > 0 ? candidatePanels.length * 0.4 : 0),
-      };
+      try {
+        const analysisData = getStoredAnalysis();
+        let candidatePanels = [];
+        if (Array.isArray(rooftopData.panels)) {
+          candidatePanels = rooftopData.panels;
+        } else if (Array.isArray(rooftopData.googleSolarData?.solarPanels)) {
+          candidatePanels = rooftopData.googleSolarData.solarPanels;
+        } else if (Array.isArray(analysisData?.panels)) {
+          candidatePanels = analysisData.panels;
+        }
 
-      const scene = await buildScene3D(payload);
-      setSceneData(scene);
-    } catch (err) {
-      console.error('[ModelView3D] Scene build error:', err);
-      setError(err.message || 'Failed to render 3D scene.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [buildingHeight]);
+        const targetPanelCount =
+          analysisData?.estimatedPanels ||
+          analysisData?.panels ||
+          rooftopData?.estimatedPanels ||
+          418;
 
-  // Synchronize with storage updates from MapSelection or Optimizer
+        const payload = {
+          polygonCoordinates: polygon,
+          panels: candidatePanels,
+          buildingHeightMeters: buildingHeight,
+          layoutMode: analysisData?.layoutMode || 'BALANCED',
+          address:
+            rooftopData.address ||
+            rooftopData.location ||
+            rooftopData.locationName ||
+            'Custom Traced Commercial Rooftop',
+          roofAreaM2: rooftopData.roofArea || rooftopData.area || 0,
+          targetPanelCount: typeof targetPanelCount === 'number' ? targetPanelCount : 418,
+        };
+
+        const scene = await buildScene3D(payload);
+        if (scene) {
+          scene.targetPanelCount = payload.targetPanelCount;
+        }
+        setSceneData(scene);
+      } catch (err) {
+        console.error('[ModelView3D] Scene build error:', err);
+        setError(err.message || 'Failed to render 3D scene.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [buildingHeight]
+  );
+
   useEffect(() => {
     loadScene();
     const handleUpdate = () => loadScene();
@@ -399,21 +472,27 @@ const ModelView3D = () => {
     };
   }, [loadScene]);
 
+  // Derived telemetry metrics
   const activePanelCount = useMemo(() => {
-    if (!sceneData) return 0;
-    if (sceneData.panels && sceneData.panels.length > 0) return sceneData.panels.length;
-    // Calculate fallback count
-    const fallback = generateFallbackPanelGrid(sceneData.buildingFootprint, buildingHeight);
-    return fallback.length;
+    if (!sceneData?.buildingFootprint) return 0;
+    const targetCount = sceneData.targetPanelCount || 418;
+    const panels = generateStrictBoundedPanels(
+      sceneData.buildingFootprint,
+      buildingHeight,
+      targetCount
+    );
+    return panels.length;
   }, [sceneData, buildingHeight]);
 
   const activeCapacityKw = useMemo(() => {
     return Math.round(activePanelCount * 0.4 * 10) / 10;
   }, [activePanelCount]);
 
+  const vertexCount = sceneData?.buildingFootprint?.length || 0;
+
   return (
     <div className="flex flex-col h-full space-y-4 pb-8">
-      {/* Top Header */}
+      {/* ─── Top Header ─── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
@@ -422,15 +501,15 @@ const ModelView3D = () => {
             </h1>
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-blue-500/10 text-blue-700 px-3 py-1 rounded-full border border-blue-500/20">
               <Sparkles size={13} className="text-blue-600" />
-              PBR Shading • Contact Shadows • Three.js
+              Dynamic Extrusion • Point-in-Polygon Boundary • R3F
             </span>
           </div>
           <p className="text-slate-500 mt-1 text-sm">
-            High-fidelity 3D building extrusion with photorealistic tilted PV modules and rack mounts.
+            Interactive extruded 3D structural twin with strict boundary containment and realistic PV mounts.
           </p>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Controls */}
         <div className="flex items-center gap-2.5 flex-wrap shrink-0">
           <button
             type="button"
@@ -443,46 +522,66 @@ const ModelView3D = () => {
 
           <button
             type="button"
-            onClick={loadScene}
+            onClick={() => loadScene()}
             disabled={isLoading}
             className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 text-xs font-bold transition-all cursor-pointer shadow-sm disabled:opacity-50"
           >
             <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            <span>{isLoading ? 'Projecting 3D...' : 'Rebuild 3D Scene'}</span>
+            <span>{isLoading ? 'Extruding 3D...' : 'Rebuild 3D Scene'}</span>
           </button>
         </div>
       </div>
 
-      {/* Alert Warning */}
+      {/* Preset Notice / Information Banner */}
+      {isSampleSite && (
+        <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs shadow-xs">
+          <div className="flex items-center gap-2">
+            <Info size={16} className="text-blue-600 shrink-0" />
+            <span>
+              Previewing <strong>Sample Commercial Rooftop</strong>. Draw your own building outline on the Map page to render your custom 3D model.
+            </span>
+          </div>
+          <Link
+            to="/map"
+            className="inline-flex items-center gap-1 font-bold text-blue-700 hover:underline shrink-0"
+          >
+            <span>Trace on Map</span>
+            <ChevronRight size={13} />
+          </Link>
+        </div>
+      )}
+
+      {/* Error Alert */}
       {error && (
         <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm shadow-sm">
           <div className="flex items-center gap-2">
             <AlertCircle size={18} className="text-amber-600 shrink-0" />
             <span>{error}</span>
           </div>
-          <Link
-            to="/map"
-            className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 hover:underline shrink-0"
+          <button
+            type="button"
+            onClick={() => loadScene(true)}
+            className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 hover:underline cursor-pointer"
           >
-            <span>Go to Map</span>
+            <span>Load Sample Complex</span>
             <ChevronRight size={13} />
-          </Link>
+          </button>
         </div>
       )}
 
-      {/* 3D Dashboard Main Grid */}
+      {/* ─── Main Viewport Grid ─── */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 flex-1 min-h-0">
         {/* Left Side Controls & Telemetry */}
         <div className="xl:col-span-1 flex flex-col gap-4">
-          {/* Active 3D Metrics */}
+          {/* Active 3D Telemetry */}
           {sceneData && (
             <Card className="p-4 space-y-3 border border-slate-200/80 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                   Site Telemetry
                 </span>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                  Live
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <ShieldCheck size={11} /> 100% Bounded
                 </span>
               </div>
               <div className="space-y-2 text-xs divide-y divide-slate-100">
@@ -493,26 +592,32 @@ const ModelView3D = () => {
                   </span>
                 </div>
                 <div className="flex justify-between pt-1.5">
+                  <span className="text-slate-500">Boundary Nodes</span>
+                  <span className="font-semibold text-slate-800">
+                    {vertexCount} Vertices
+                  </span>
+                </div>
+                <div className="flex justify-between pt-1.5">
                   <span className="text-slate-500">Roof Area</span>
                   <span className="font-semibold text-slate-800">
                     {sceneData.roofAreaM2?.toLocaleString('en-IN')} m²
                   </span>
                 </div>
                 <div className="flex justify-between pt-1.5">
-                  <span className="text-slate-500">3D Modules</span>
+                  <span className="text-slate-500">PV Modules</span>
                   <strong className="text-blue-700 font-bold">
                     {activePanelCount} panels
                   </strong>
                 </div>
                 <div className="flex justify-between pt-1.5">
-                  <span className="text-slate-500">Capacity</span>
+                  <span className="text-slate-500">Total Capacity</span>
                   <strong className="text-emerald-700 font-bold">
                     {activeCapacityKw} kWp
                   </strong>
                 </div>
                 <div className="flex justify-between pt-1.5">
-                  <span className="text-slate-500">Rack Tilt</span>
-                  <span className="font-semibold text-slate-800">14° South</span>
+                  <span className="text-slate-500">Hardware Mount</span>
+                  <span className="font-semibold text-slate-800">14° Southern Tilt</span>
                 </div>
               </div>
             </Card>
@@ -522,7 +627,7 @@ const ModelView3D = () => {
           <Card className="p-4 space-y-3 border border-slate-200/80 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Building Height
+                Extrusion Height
               </span>
               <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60">
                 {buildingHeight.toFixed(1)} m
@@ -539,59 +644,150 @@ const ModelView3D = () => {
                 className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-indigo-600 bg-slate-200"
               />
               <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                <span>1 Floor (~3m)</span>
-                <span>Commercial (~12m)</span>
-                <span>High (~25m)</span>
+                <span>1 Floor (3m)</span>
+                <span>Commercial (8m)</span>
+                <span>High (25m)</span>
               </div>
             </div>
           </Card>
 
-          {/* Layer Visibility Checkboxes */}
+          {/* Camera View Angle Presets */}
+          <Card className="p-4 space-y-2.5 border border-slate-200/80 shadow-xs">
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              Camera Angles
+            </span>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCameraPreset('iso')}
+                className={`px-2 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer text-center ${
+                  cameraPreset === 'iso'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                3D Iso
+              </button>
+              <button
+                type="button"
+                onClick={() => setCameraPreset('top')}
+                className={`px-2 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer text-center ${
+                  cameraPreset === 'top'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                Top Plan
+              </button>
+              <button
+                type="button"
+                onClick={() => setCameraPreset('south')}
+                className={`px-2 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer text-center ${
+                  cameraPreset === 'south'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                South Sun
+              </button>
+            </div>
+          </Card>
+
+          {/* Viewport Layer Toggles */}
           <Card className="p-4 space-y-3 border border-slate-200/80 shadow-xs">
             <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
               Viewport Layers
             </span>
-            <label className="flex items-center justify-between cursor-pointer p-2 rounded-lg hover:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <Layers size={15} className="text-blue-600" />
-                <span className="text-xs font-semibold text-slate-700">
-                  Solar Panel Array
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={showPanels}
-                onChange={(e) => setShowPanels(e.target.checked)}
-                className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
-              />
-            </label>
-          </Card>
+            <div className="space-y-1.5">
+              <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <Layers size={14} className="text-blue-600" />
+                  <span className="text-xs font-medium text-slate-700">
+                    Solar Panel Array
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showPanels}
+                  onChange={(e) => setShowPanels(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                />
+              </label>
 
-          {/* Orbit Navigation Guide */}
-          <Card className="p-4 space-y-2 border border-slate-200/80 shadow-xs bg-slate-50/60">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-              Controls
-            </span>
-            <div className="space-y-1.5 text-[11px] text-slate-500">
-              <p>🖱️ <strong>Left Click + Drag</strong> — 360° Orbit</p>
-              <p>🖱️ <strong>Right Click + Drag</strong> — Pan Camera</p>
-              <p>🔍 <strong>Mouse Wheel</strong> — Zoom In / Out</p>
-              <p>👆 <strong>Hover Module</strong> — Inverter & Tilt specs</p>
+              <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={14} className="text-amber-500" />
+                  <span className="text-xs font-medium text-slate-700">
+                    Parapet Border Wall
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showParapet}
+                  onChange={(e) => setShowParapet(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <Box size={14} className="text-slate-600" />
+                  <span className="text-xs font-medium text-slate-700">
+                    Facade Wireframe
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showWireframe}
+                  onChange={(e) => setShowWireframe(e.target.checked)}
+                  className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-amber-500" />
+                  <span className="text-xs font-medium text-slate-700">
+                    PCF Soft Shadows
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showShadows}
+                  onChange={(e) => setShowShadows(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <Compass size={14} className="text-slate-500" />
+                  <span className="text-xs font-medium text-slate-700">
+                    Ground Metric Grid
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showGrid}
+                  onChange={(e) => setShowGrid(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                />
+              </label>
             </div>
           </Card>
 
-          {/* Quick links */}
+          {/* Quick link to 2D Map */}
           <Link
-            to="/panel-optimizer"
+            to="/map"
             className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-800 px-4 py-3 text-xs font-bold transition-all cursor-pointer shadow-2xs"
           >
             <Cpu size={15} />
-            <span>Tune in 2D Optimizer</span>
+            <span>Trace New Roof on Map</span>
             <ChevronRight size={14} />
           </Link>
         </div>
 
-        {/* 3D WebGL Canvas Container */}
+        {/* ─── 3D WebGL Canvas ─── */}
         <Card
           className="xl:col-span-4 p-0 overflow-hidden relative shadow-md border border-slate-200"
           style={{ minHeight: '620px' }}
@@ -602,39 +798,15 @@ const ModelView3D = () => {
                 <Box size={24} className="text-blue-400" />
               </div>
               <p className="text-white font-semibold text-sm">
-                Generating 3D Extrusion & PV Matrix...
+                Projecting Custom Polygon & Filtering PV Matrix...
               </p>
               <p className="text-slate-400 text-xs">
-                Applying PBR materials, contact shadows & tilt alignment
+                Executing 2D ray-casting Point-in-Polygon containment pass
               </p>
             </div>
           )}
 
-          {!sceneData && !isLoading ? (
-            <div
-              className="w-full h-full flex flex-col items-center justify-center gap-4 text-center p-12 bg-slate-950"
-              style={{ minHeight: '620px' }}
-            >
-              <div className="w-16 h-16 rounded-2xl bg-blue-500/15 flex items-center justify-center">
-                <Box size={32} className="text-blue-400" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-white">
-                  No Rooftop Boundary Selected
-                </h3>
-                <p className="text-slate-400 text-xs max-w-sm">
-                  Outline your building corners on the interactive Map Selection page to automatically generate your 3D digital twin.
-                </p>
-              </div>
-              <Link
-                to="/map"
-                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/30"
-              >
-                <Cpu size={14} />
-                <span>Go to Map Selection</span>
-              </Link>
-            </div>
-          ) : sceneData ? (
+          {sceneData ? (
             <Canvas
               shadows
               dpr={[1, 2]}
@@ -656,8 +828,13 @@ const ModelView3D = () => {
                 <SceneContent
                   sceneData={sceneData}
                   showPanels={showPanels}
+                  showParapet={showParapet}
+                  showWireframe={showWireframe}
+                  showGrid={showGrid}
+                  showShadows={showShadows}
                   buildingHeight={buildingHeight}
                   onPanelHover={setHoveredPanel}
+                  cameraPreset={cameraPreset}
                 />
                 {hoveredPanel && <PanelTooltip panel={hoveredPanel} />}
               </Suspense>
@@ -670,8 +847,8 @@ const ModelView3D = () => {
             <span className="text-[11px] font-bold text-slate-200 tracking-wide">
               SolarScope 3D Twin
             </span>
-            <span className="text-[10px] text-slate-500 border-l border-slate-700 pl-2">
-              {activePanelCount} Active Modules
+            <span className="text-[10px] text-emerald-400 border-l border-slate-700 pl-2 font-medium">
+              Strictly Bounded • {activePanelCount} Modules
             </span>
           </div>
         </Card>
