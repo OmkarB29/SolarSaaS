@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMapsSdk } from '../../services/googleMapsLoader';
+import { loadGoogleMapsSdk, resetGoogleMapsLoader } from '../../services/googleMapsLoader';
 import { useSolarFluxOverlay } from './useSolarFluxOverlay';
 import { Layers, MapPin, Eye, EyeOff, RotateCcw } from 'lucide-react';
 
@@ -30,6 +30,7 @@ export const GoogleSolarMap = ({
 
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [mapType, setMapType] = useState('hybrid');
   const [fluxEnabled, setFluxEnabled] = useState(initialFlux);
   const [runtimeApiKey, setRuntimeApiKey] = useState(
@@ -63,7 +64,7 @@ export const GoogleSolarMap = ({
     return () => {
       active = false;
     };
-  }, [runtimeApiKey, mapId]);
+  }, [runtimeApiKey, mapId, retryCount]);
 
   // 2. Initialize Google Map Instance
   useEffect(() => {
@@ -429,11 +430,12 @@ export const GoogleSolarMap = ({
           <p className="text-xs text-slate-400 mb-4">{loadError}</p>
           <button
             onClick={() => {
+              resetGoogleMapsLoader();
               setLoadError(null);
               setIsSdkReady(false);
-              loadGoogleMapsSdk({ apiKey: runtimeApiKey, mapId });
+              setRetryCount((prev) => prev + 1);
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800 text-xs font-semibold text-white transition-all"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800 text-xs font-semibold text-white transition-all cursor-pointer"
           >
             <RotateCcw size={13} />
             <span>Retry Connection</span>

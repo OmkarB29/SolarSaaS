@@ -1,14 +1,21 @@
-import { Loader } from '@googlemaps/js-api-loader';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
-let loaderPromise = null;
-let cachedApiKey = null;
+let isConfigured = false;
+let loadPromise = null;
 
 /**
- * Asynchronously loads the Google Maps JavaScript SDK using @googlemaps/js-api-loader.
- * Ensures singleton loading and caches the promise.
+ * Resets the cached load promise (useful on retry).
+ */
+export const resetGoogleMapsLoader = () => {
+  loadPromise = null;
+};
+
+/**
+ * Asynchronously loads the Google Maps JavaScript SDK using the official functional API
+ * (setOptions & importLibrary) from @googlemaps/js-api-loader v2+.
  *
- * @param {Object} options
- * @param {string} options.apiKey
+ * @param {Object} [options]
+ * @param {string} [options.apiKey]
  * @param {string} [options.mapId]
  * @returns {Promise<typeof google.maps>}
  */
@@ -21,32 +28,41 @@ export const loadGoogleMapsSdk = async ({ apiKey, mapId } = {}) => {
     );
   }
 
+  // If already loaded and available on window
   if (window.google?.maps?.Map) {
     return window.google.maps;
   }
 
-  if (!loaderPromise || cachedApiKey !== resolvedKey) {
-    cachedApiKey = resolvedKey;
-    const loader = new Loader({
-      apiKey: resolvedKey,
-      version: 'weekly',
-      libraries: ['maps', 'marker', 'geometry', 'drawing'],
-      ...(mapId ? { mapIds: [mapId] } : {}),
-    });
+  if (!loadPromise) {
+    loadPromise = (async () => {
+      try {
+        if (!isConfigured) {
+          setOptions({
+            key: resolvedKey,
+            v: 'weekly',
+            ...(mapId ? { mapIds: [mapId] } : {}),
+          });
+          isConfigured = true;
+        }
 
-    loaderPromise = loader.load().then(async () => {
-      // Ensure all necessary modern libraries are imported and available
-      if (window.google?.maps?.importLibrary) {
-        await Promise.allSettled([
-          window.google.maps.importLibrary('maps'),
-          window.google.maps.importLibrary('marker'),
-          window.google.maps.importLibrary('drawing'),
-          window.google.maps.importLibrary('geometry'),
+        // Concurrently load all required libraries using the new functional API
+        await Promise.all([
+          importLibrary('maps'),
+          importLibrary('marker'),
+          importLibrary('drawing'),
+          importLibrary('geometry'),
         ]);
+
+        return window.google.maps;
+      } catch (err) {
+        // Reset cached promise so subsequent attempts can retry
+        loadPromise = null;
+        throw err;
       }
-      return window.google.maps;
-    });
+    })();
   }
 
-  return loaderPromise;
+  return loadPromise;
 };
+
+export default loadGoogleMapsSdk;
