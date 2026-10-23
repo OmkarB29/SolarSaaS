@@ -60,6 +60,20 @@ const AnalysisResults = ({ results }) => {
                 <span className="text-2xl font-bold text-slate-900">{formatValue(item.key, results[item.key])}</span>
                 {item.unit && <span className="text-sm font-semibold text-slate-500">{item.unit}</span>}
               </div>
+
+              {item.key === 'installationCost' && (
+                <p className="mt-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50/70 border border-blue-200/50 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                  <span>₹{results.costPerKw ? results.costPerKw.toLocaleString('en-IN') : '30,000'}/kW</span>
+                  <span>•</span>
+                  <span>{results.pricingTier || 'C&I Commercial'}</span>
+                </p>
+              )}
+
+              {item.key === 'roi' && results.paybackPeriod && (
+                <p className="mt-1.5 text-[11px] font-semibold text-green-700 bg-green-50/70 border border-green-200/50 px-2 py-0.5 rounded-md inline-block">
+                  Payback: ~{results.paybackPeriod} years
+                </p>
+              )}
             </div>
           );
         })}

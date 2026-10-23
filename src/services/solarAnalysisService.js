@@ -1,12 +1,40 @@
 import { area as turfArea, polygon as turfPolygon } from '@turf/turf';
 
-const PANEL_AREA = 2.5;
+const PANEL_AREA = 2.5; // Average space footprint per 400W module (including maintenance gaps)
+const PANEL_WATTAGE_KW = 0.40; // 400W standard commercial tier-1 module
 const SUNLIGHT_FACTOR = 4.8;
 const SYSTEM_EFFICIENCY = 0.18;
 const PERFORMANCE_RATIO = 0.78;
-const COST_PER_PANEL = 21500;
-const ELECTRICITY_RATE = 8.5;
-const CO2_FACTOR = 0.82;
+const ELECTRICITY_RATE = 8.5; // Indian commercial/institutional grid tariff (₹/kWh)
+const CO2_FACTOR = 0.82; // CEA India grid emission factor (kg CO2 / kWh)
+
+/**
+ * Real-world Indian Solar EPC Benchmark Pricing (Turnkey: Modules + Inverters + MMS + BOS + Installation)
+ * Reflects MNRE benchmarks and Indian commercial rooftop economies of scale:
+ * - Micro / Residential (≤ 3 kW): ~₹52,000 / kW
+ * - Small Residential (3 - 10 kW): ~₹46,000 - ₹52,000 / kW
+ * - Small Commercial (10 - 50 kW): ~₹38,000 - ₹46,000 / kW
+ * - Medium Commercial (50 - 100 kW): ~₹32,000 - ₹38,000 / kW
+ * - Large C&I / Institutional (100 - 250 kW): ~₹28,000 - ₹32,000 / kW (e.g., 175.2 kW is ~₹30,000/kW)
+ * - Industrial / Campus Scale (> 250 kW): ~₹26,000 - ₹28,000 / kW
+ */
+export const getCostPerKw = (capacityKw) => {
+  if (capacityKw <= 0) return 52000;
+  if (capacityKw <= 3) return 52000;
+  if (capacityKw <= 10) return Math.round(52000 - ((capacityKw - 3) / 7) * 6000);
+  if (capacityKw <= 50) return Math.round(46000 - ((capacityKw - 10) / 40) * 8000);
+  if (capacityKw <= 100) return Math.round(38000 - ((capacityKw - 50) / 50) * 6000);
+  if (capacityKw <= 250) return Math.round(32000 - ((capacityKw - 100) / 150) * 4000);
+  return 27500;
+};
+
+export const getPricingTierName = (capacityKw) => {
+  if (capacityKw <= 10) return 'Residential Scale';
+  if (capacityKw <= 50) return 'Small Commercial';
+  if (capacityKw <= 100) return 'Medium Commercial';
+  if (capacityKw <= 250) return 'C&I Institutional';
+  return 'Industrial / Campus';
+};
 
 /**
  * Calculates high-precision geodesic metrics for a rooftop polygon:
@@ -105,9 +133,16 @@ export const calculateRooftopArea = (coordinates) => {
 export const estimateSolarAnalysis = (areaSqm) => {
   const panels = Math.max(0, Math.floor(areaSqm / PANEL_AREA));
   const usableArea = panels * PANEL_AREA;
+  const capacityKw = Number((panels * PANEL_WATTAGE_KW).toFixed(1));
+  const costPerKw = getCostPerKw(capacityKw);
+  const pricingTier = getPricingTierName(capacityKw);
+
+  // Economies of scale: total turnkey capital expenditure
+  const installationCost = Math.round(capacityKw * costPerKw);
+  const costPerPanel = panels > 0 ? Math.round(installationCost / panels) : 0;
+
   const monthlyGeneration = Math.round(usableArea * SUNLIGHT_FACTOR * SYSTEM_EFFICIENCY * PERFORMANCE_RATIO * 30);
   const yearlyGeneration = monthlyGeneration * 12;
-  const installationCost = Math.round(panels * COST_PER_PANEL);
   const yearlySavings = Math.round(yearlyGeneration * ELECTRICITY_RATE);
   const paybackPeriod = yearlySavings > 0 ? Number((installationCost / yearlySavings).toFixed(1)) : 0;
   const roi = installationCost > 0 ? Number(((yearlySavings / installationCost) * 100).toFixed(1)) : 0;
@@ -115,6 +150,10 @@ export const estimateSolarAnalysis = (areaSqm) => {
 
   return {
     panels,
+    capacityKw,
+    costPerKw,
+    costPerPanel,
+    pricingTier,
     monthlyGeneration,
     yearlyGeneration,
     installationCost,
@@ -139,9 +178,20 @@ export const applyWeatherAdjustment = (analysis, weather) => {
   const weatherAdjustedYearlyGeneration = weatherAdjustedMonthlyGeneration * 12;
   const weatherAdjustmentPercent = Math.round((adjustmentFactor - 1) * 100);
 
+  const yearlySavings = Math.round(weatherAdjustedYearlyGeneration * ELECTRICITY_RATE);
+  const paybackPeriod = yearlySavings > 0 ? Number((analysis.installationCost / yearlySavings).toFixed(1)) : 0;
+  const roi = analysis.installationCost > 0 ? Number(((yearlySavings / analysis.installationCost) * 100).toFixed(1)) : 0;
+  const co2Reduction = Math.round(weatherAdjustedYearlyGeneration * CO2_FACTOR);
+
   return {
     ...analysis,
     weather,
+    monthlyGeneration: weatherAdjustedMonthlyGeneration,
+    yearlyGeneration: weatherAdjustedYearlyGeneration,
+    yearlySavings,
+    paybackPeriod,
+    roi,
+    co2Reduction,
     weatherAdjustedMonthlyGeneration,
     weatherAdjustedYearlyGeneration,
     weatherAdjustmentPercent,
