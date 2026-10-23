@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { loadGoogleMapsSdk, resetGoogleMapsLoader } from '../../services/googleMapsLoader';
 import { useSolarFluxOverlay } from './useSolarFluxOverlay';
-import { Layers, MapPin, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Layers, MapPin, Eye, EyeOff, RotateCcw, AlertTriangle, ExternalLink } from 'lucide-react';
 
 const DEFAULT_CENTER = { lat: 12.9716, lng: 77.5946 }; // Bengaluru Default
 
@@ -30,6 +30,7 @@ export const GoogleSolarMap = ({
 
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [authBlockedError, setAuthBlockedError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [mapType, setMapType] = useState('hybrid');
   const [fluxEnabled, setFluxEnabled] = useState(initialFlux);
@@ -37,6 +38,22 @@ export const GoogleSolarMap = ({
     apiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
   );
   const [tempApiKeyInput, setTempApiKeyInput] = useState('');
+
+  // Catch Google Maps authentication / restriction errors (ApiTargetBlockedMapError, etc.)
+  useEffect(() => {
+    const originalAuthFailure = window.gm_authFailure;
+    window.gm_authFailure = () => {
+      console.warn('[GoogleSolarMap] gm_authFailure fired: API key restriction blocking Maps JavaScript API.');
+      setAuthBlockedError(true);
+      if (typeof originalAuthFailure === 'function') {
+        originalAuthFailure();
+      }
+    };
+
+    return () => {
+      window.gm_authFailure = originalAuthFailure;
+    };
+  }, []);
 
   // 1. Asynchronously load Google Maps JavaScript SDK
   useEffect(() => {
@@ -46,6 +63,7 @@ export const GoogleSolarMap = ({
     }
 
     setLoadError(null);
+    setAuthBlockedError(false);
     let active = true;
 
     loadGoogleMapsSdk({ apiKey: runtimeApiKey, mapId })
@@ -81,7 +99,7 @@ export const GoogleSolarMap = ({
       mapTypeId: window.google.maps.MapTypeId.HYBRID, // Satellite with vector street/building overlays
       tilt: 0, // Top-down Nadir view for accurate rooftop geometry
       streetViewControl: false,
-      mapTypeControl: false, // We supply custom streamlined controls
+      mapTypeControl: false,
       fullscreenControl: false,
       zoomControl: true,
       zoomControlOptions: {
@@ -105,7 +123,7 @@ export const GoogleSolarMap = ({
       }
     });
 
-    // Coordinate state handler: Idle (captures panning and zooming updates)
+    // Coordinate state handler: Idle
     const idleListener = map.addListener('idle', () => {
       if (onBoundsChange) {
         const b = map.getBounds();
@@ -150,7 +168,7 @@ export const GoogleSolarMap = ({
     }
   }, [center, bounds]);
 
-  // 4. AdvancedMarkerElement (with fallback to google.maps.Marker)
+  // 4. AdvancedMarkerElement (with fallback to classic google.maps.Marker)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !markerPosition) {
@@ -166,7 +184,6 @@ export const GoogleSolarMap = ({
       ? { lat: markerPosition[0], lng: markerPosition[1] }
       : markerPosition;
 
-    // Clean up previous marker
     if (markerRef.current) {
       if (markerRef.current.map !== undefined) markerRef.current.map = null;
       if (typeof markerRef.current.setMap === 'function') markerRef.current.setMap(null);
@@ -204,11 +221,11 @@ export const GoogleSolarMap = ({
         markerRef.current = advancedMarker;
         return;
       } catch (advancedMarkerErr) {
-        console.warn('[GoogleSolarMap] AdvancedMarkerElement failed, using classic Marker:', advancedMarkerErr);
+        console.warn('[GoogleSolarMap] AdvancedMarkerElement fallback:', advancedMarkerErr);
       }
     }
 
-    // Fallback: Standard google.maps.Marker
+    // Classic Marker Fallback
     if (window.google?.maps?.Marker) {
       const classicMarker = new window.google.maps.Marker({
         map,
@@ -246,7 +263,7 @@ export const GoogleSolarMap = ({
 
     const polygon = new window.google.maps.Polygon({
       paths: path,
-      strokeColor: '#f59e0b', // Amber boundary
+      strokeColor: '#f59e0b',
       strokeOpacity: 0.95,
       strokeWeight: 3,
       fillColor: '#f59e0b',
@@ -318,7 +335,6 @@ export const GoogleSolarMap = ({
             onPolygonChange(coords);
           }
 
-          // Hand off drawing to state-driven polygon
           drawnPoly.setMap(null);
           dm.setDrawingMode(null);
         }
@@ -372,7 +388,54 @@ export const GoogleSolarMap = ({
     }
   };
 
-  // If Key is Missing: Present user-friendly configuration card
+  // If Key is Blocked by API Restrictions (ApiTargetBlockedMapError)
+  if (authBlockedError) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900/95 p-6 text-white text-center">
+        <div className="max-w-md w-full rounded-2xl bg-slate-800 border border-amber-500/40 p-6 shadow-2xl backdrop-blur-md">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 mb-3">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <h3 className="text-lg font-bold text-white mb-1">
+            Enable Maps JavaScript API
+          </h3>
+          <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+            Your Google Cloud API key works for the <strong>Solar API</strong> (live data is active!), but needs <strong>Maps JavaScript API</strong> checked under its API restrictions to display the satellite map canvas.
+          </p>
+
+          <div className="rounded-xl bg-slate-950/90 p-3.5 text-left text-xs space-y-2 mb-4 border border-slate-700">
+            <div className="font-semibold text-amber-300 flex items-center justify-between">
+              <span>Quick 30-Second Fix in Google Cloud:</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px]">
+              <li>Switch to your open <strong>Keys & Credentials</strong> tab in Google Cloud Console</li>
+              <li>Click on your key name: <strong>Maps Platform API Key</strong></li>
+              <li>Scroll down to <strong>API restrictions</strong></li>
+              <li>In the dropdown list, check <strong className="text-amber-300">Maps JavaScript API</strong></li>
+              <li>Click <strong>Save</strong> at the bottom</li>
+            </ol>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAuthBlockedError(false);
+              setLoadError(null);
+              resetGoogleMapsLoader();
+              setIsSdkReady(false);
+              setRetryCount((c) => c + 1);
+            }}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3 font-bold text-xs text-slate-950 transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+          >
+            <RotateCcw size={14} />
+            <span>I Saved It — Reload Satellite Map</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If Key is Missing
   if (loadError === 'MISSING_KEY') {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-8 text-white">
@@ -384,7 +447,7 @@ export const GoogleSolarMap = ({
             Google Maps API Key Required
           </h3>
           <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-            To view high-resolution satellite imagery and Google Solar building overlays, enter your Google Cloud API key below or set <code className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono text-2xs">VITE_GOOGLE_MAPS_API_KEY</code> in <code className="text-slate-300">.env</code>.
+            Enter your Google Cloud API key below or set <code className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono text-2xs">VITE_GOOGLE_MAPS_API_KEY</code> in <code className="text-slate-300">.env</code>.
           </p>
 
           <form
@@ -411,17 +474,12 @@ export const GoogleSolarMap = ({
               Initialize Google Satellite Map
             </button>
           </form>
-
-          <div className="mt-4 pt-4 border-t border-slate-700/60 flex items-center justify-between text-2xs text-slate-500">
-            <span>Powered by Google Maps JS SDK</span>
-            <span>Version weekly</span>
-          </div>
         </div>
       </div>
     );
   }
 
-  // If Error Occurred during SDK loading
+  // If other load error occurred
   if (loadError && loadError !== 'MISSING_KEY') {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 p-6 text-center text-slate-300">
