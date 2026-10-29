@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
+import { useLanguage } from '../context/LanguageContext';
 import {
   BuildingMesh,
   RoofPlane,
@@ -406,6 +407,7 @@ class CanvasErrorBoundary extends React.Component {
 
 /* ─── Main View Component ─── */
 const ModelView3D = () => {
+  const { t } = useLanguage();
   // Mode Switcher: 'cad' vs 'tripo'
   const [activeMode, setActiveMode] = useState('cad');
 
@@ -628,7 +630,7 @@ const ModelView3D = () => {
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900">
-              3D Rooftop Solar Digital Twin
+              {t('model3DTitle')}
             </h1>
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-blue-500/10 text-blue-700 px-3 py-1 rounded-full border border-blue-500/20">
               <Sparkles size={13} className="text-blue-600" />
@@ -636,7 +638,7 @@ const ModelView3D = () => {
             </span>
           </div>
           <p className="text-slate-500 mt-1 text-sm">
-            Toggle between the exact CAD engineering model with interactive modules or the Generative Tripo AI 3D Mesh.
+            {t('model3DSubtitle')}
           </p>
         </div>
 
@@ -652,7 +654,7 @@ const ModelView3D = () => {
             }`}
           >
             <Cpu size={15} className={activeMode === 'cad' ? 'text-blue-600' : ''} />
-            <span>CAD Twin (Exact Math)</span>
+            <span>{t('cadTwin')}</span>
           </button>
 
           <button
@@ -665,7 +667,7 @@ const ModelView3D = () => {
             }`}
           >
             <Wand2 size={15} />
-            <span>Tripo AI 3D Mesh</span>
+            <span>{t('tripoMesh')}</span>
           </button>
         </div>
       </div>

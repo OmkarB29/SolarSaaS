@@ -1,12 +1,14 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Layers, CheckCircle2, Zap } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../ui/Card';
+import { useLanguage } from '../../context/LanguageContext';
 
 const DynamicPanelLayout = ({
   roofArea = 100,
   panelCount = 40,
   panelDimensions = { width: 2.0, height: 1.0, area: 2.0, power: 400 }
 }) => {
+  const { t } = useLanguage();
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const count = Math.max(1, Math.round(panelCount || 0));
@@ -169,7 +171,7 @@ const DynamicPanelLayout = ({
   return (
     <Card className="p-0 overflow-hidden">
       <CardHeader 
-        title="Dynamic Panel Layout Visualization" 
+        title={t('dynamicPanelLayoutTitle')} 
         className="mb-0 pt-6 px-6"
         action={
           <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-200">
@@ -208,22 +210,22 @@ const DynamicPanelLayout = ({
         {/* Layout Specifications Footer */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-xs">
           <div>
-            <span className="text-slate-400 block">Module Dimensions:</span>
+            <span className="text-slate-400 block">{t('moduleDimensions')}</span>
             <span className="font-semibold text-slate-700">
               {panelDimensions.width}m × {panelDimensions.height}m ({(panelDimensions.area || 2).toFixed(1)} m²)
             </span>
           </div>
           <div>
-            <span className="text-slate-400 block">Rooftop Utilization:</span>
+            <span className="text-slate-400 block">{t('rooftopUtilization')}</span>
             <span className="font-semibold text-slate-700">
               {coveragePercent}% ({usableRoofArea.toLocaleString('en-IN')} m²)
             </span>
           </div>
           <div className="col-span-2 sm:col-span-1">
-            <span className="text-slate-400 block">Array Azimuth:</span>
+            <span className="text-slate-400 block">{t('arrayAzimuth')}</span>
             <span className="font-semibold text-emerald-600 flex items-center gap-1">
               <CheckCircle2 size={12} />
-              180° Optimal South
+              {t('optimalSouth')}
             </span>
           </div>
         </div>

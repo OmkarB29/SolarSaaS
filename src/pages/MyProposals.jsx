@@ -21,6 +21,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Table } from '../components/ui/Table';
 import { proposalApiService } from '../services/proposalApiService';
 import { analysisApiService } from '../services/analysisApiService';
+import { useLanguage } from '../context/LanguageContext';
 
 const STATUS_CONFIG = {
   DRAFT: {
@@ -61,6 +62,7 @@ const formatDate = (value) => {
 };
 
 const MyProposals = () => {
+  const { t } = useLanguage();
   const [proposals, setProposals] = useState([]);
   const [userAnalyses, setUserAnalyses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -319,18 +321,18 @@ const MyProposals = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">My Proposals</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{t('myProposalsTitle')}</h1>
           <p className="mt-1 text-slate-500">
-            Dedicated workspace for commercial proposals, lifecycle tracking, and status management
+            {t('myProposalsSubtitle')}
           </p>
         </div>
         <button
           type="button"
           onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold shadow-sm transition-all"
+          className="inline-flex items-center gap-2 rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold shadow-sm transition-all cursor-pointer"
         >
           <Plus size={16} />
-          <span>New Proposal</span>
+          <span>{t('newProposal')}</span>
         </button>
       </div>
 
@@ -356,13 +358,13 @@ const MyProposals = () => {
               key={st}
               type="button"
               onClick={() => setFilterStatus(st)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 isActive
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <span>{st === 'ALL' ? 'All Proposals' : st}</span>
+              <span>{st === 'ALL' ? t('allProposals') : st}</span>
               <span
                 className={`px-1.5 py-0.2 rounded-full text-2xs ${
                   isActive ? 'bg-slate-700 text-slate-200' : 'bg-slate-200 text-slate-600'

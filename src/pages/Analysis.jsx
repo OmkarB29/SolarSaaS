@@ -31,6 +31,7 @@ import { reportApiService } from '../services/reportApiService';
 import { analysisApiService } from '../services/analysisApiService';
 import { proposalApiService } from '../services/proposalApiService';
 import { getLatestAnalysis } from '../services/reportService';
+import { useLanguage } from '../context/LanguageContext';
 
 const formatNumber = (value, digits = 0) =>
   value === null || value === undefined
@@ -44,6 +45,7 @@ const formatCurrency = (value) =>
 
 const Analysis = () => {
   const routerLocation = useLocation();
+  const { t, language } = useLanguage();
   const [analysis, setAnalysis] = useState(() => {
     if (routerLocation.state?.analysis) {
       return routerLocation.state.analysis;
@@ -220,7 +222,7 @@ const Analysis = () => {
 
       // 2. Generate PDF and persist report record to PostgreSQL
       const { downloadAnalysisReport } = await import('../services/reportService');
-      downloadAnalysisReport(updatedAnalysis);
+      downloadAnalysisReport(updatedAnalysis, null, language);
 
       const reportName = `Proposal - ${locationName} (${systemSize} kWp)`;
       const reportData = {
@@ -228,6 +230,7 @@ const Analysis = () => {
         reportType: 'PDF',
         analysisId: analysisId,
         filePath: `/reports/${reportName.replace(/\s+/g, '_')}.pdf`,
+        language: language,
       };
 
       const savedReportResponse = await reportApiService.saveReport(reportData);
@@ -246,9 +249,9 @@ const Analysis = () => {
         console.warn('Could not save proposal record:', propErr);
       }
 
-      let successMsg = 'Proposal saved to database!';
+      let successMsg = t('proposalSavedMsg');
       if (savedReportResponse?.emailStatus === 'SENT') {
-        successMsg = 'Proposal saved & report emailed to your inbox!';
+        successMsg = t('proposalSavedMsg');
       } else if (savedReportResponse?.emailStatus === 'FAILED') {
         successMsg = 'Proposal saved (Auto-email notice: SMTP not configured)';
       }
@@ -279,15 +282,15 @@ const Analysis = () => {
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Sun size={32} />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Run rooftop analysis to view results.</h2>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">{t('emptyAnalysisPrompt')}</h2>
           <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
-            Select or draw a rooftop polygon on the satellite map to compute real-time panel estimates, yield projections, and battery storage sizing.
+            {t('emptyAnalysisDesc')}
           </p>
           <Link
             to="/map"
             className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors shadow-sm shadow-amber-500/30 cursor-pointer"
           >
-            <span>Draw Rooftop Polygon</span>
+            <span>{t('drawRooftopBtn')}</span>
             <ArrowRight size={18} />
           </Link>
         </Card>
@@ -301,7 +304,7 @@ const Analysis = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-900">System Analysis & Financials</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t('systemAnalysisTitle')}</h1>
             {analysis.location && (
               <span className="inline-flex items-center gap-1 text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
                 <MapPin size={12} className="text-amber-500" />
@@ -310,7 +313,7 @@ const Analysis = () => {
             )}
           </div>
           <p className="text-slate-500 text-sm mt-1">
-            Dynamic performance calculations and 20-year economic projections
+            {t('systemAnalysisSubtitle')}
           </p>
         </div>
 
@@ -334,7 +337,7 @@ const Analysis = () => {
             className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-300 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30 disabled:cursor-not-allowed cursor-pointer"
           >
             <FileText size={18} />
-            <span>{isSaving ? 'Saving Proposal...' : 'Save Proposal'}</span>
+            <span>{isSaving ? t('savingProposal') : t('saveProposalBtn')}</span>
           </button>
         </div>
       </div>
@@ -350,12 +353,12 @@ const Analysis = () => {
             <CardContent className="relative z-10 p-6">
               <h3 className="text-lg font-bold mb-6 flex items-center space-x-2">
                 <Layers size={20} className="text-primary-400" />
-                <span>Dynamic System Design</span>
+                <span>{t('dynamicSystemDesign')}</span>
               </h3>
               
               <div className="space-y-4">
                 <div className="flex justify-between items-end border-b border-white/10 pb-3">
-                  <span className="text-slate-400 text-sm">Usable Area</span>
+                  <span className="text-slate-400 text-sm">{t('usableArea')}</span>
                   <div className="text-right">
                     <span className="text-xl font-bold">{formatNumber(usableArea, 1)}</span>
                     <span className="text-slate-400 ml-1 text-sm">m²</span>
@@ -363,7 +366,7 @@ const Analysis = () => {
                 </div>
 
                 <div className="flex justify-between items-end border-b border-white/10 pb-3">
-                  <span className="text-slate-400 text-sm">System Size</span>
+                  <span className="text-slate-400 text-sm">{t('systemSize')}</span>
                   <div className="text-right">
                     <span className="text-xl font-bold text-primary-400">{formatNumber(systemSize, 1)}</span>
                     <span className="text-slate-400 ml-1 text-sm">kWp</span>
@@ -371,7 +374,7 @@ const Analysis = () => {
                 </div>
 
                 <div className="flex justify-between items-end border-b border-white/10 pb-3">
-                  <span className="text-slate-400 text-sm">Est. Panel Count</span>
+                  <span className="text-slate-400 text-sm">{t('estPanelCount')}</span>
                   <div className="text-right">
                     <span className="text-xl font-bold">{formatNumber(panelCount)}</span>
                     <span className="text-slate-400 ml-1 text-sm">modules</span>
@@ -379,7 +382,7 @@ const Analysis = () => {
                 </div>
 
                 <div className="flex justify-between items-end pb-1">
-                  <span className="text-slate-400 text-sm">Battery Recommendation</span>
+                  <span className="text-slate-400 text-sm">{t('batteryRecommendation')}</span>
                   <div className="text-right">
                     <span className="text-xl font-bold text-emerald-400">{formatNumber(batteryRecommendation)}</span>
                     <span className="text-slate-400 ml-1 text-sm">kWh LFP</span>
@@ -404,18 +407,18 @@ const Analysis = () => {
               <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-3">
                 <Banknote size={24} />
               </div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Total Installation</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">{t('totalInstallation')}</p>
               <p className="text-2xl font-bold text-slate-900 border-b-2 border-primary-500/30 pb-1">
                 {formatCurrency(installationCost)}
               </p>
-              <p className="text-xs text-slate-400 mt-2">Capital investment</p>
+              <p className="text-xs text-slate-400 mt-2">{t('capitalInvestment')}</p>
             </Card>
 
             <Card className="flex flex-col items-center text-center p-5 shadow-xs">
               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-3">
                 <Zap size={24} />
               </div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Annual Yield</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">{t('annualYield')}</p>
               <p className="text-2xl font-bold text-slate-900 border-b-2 border-primary-500/30 pb-1">
                 {formatNumber(annualYield)} <span className="text-sm font-normal text-slate-500">kWh</span>
               </p>
@@ -428,12 +431,12 @@ const Analysis = () => {
               <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-3">
                 <PiggyBank size={24} />
               </div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Year 1 Savings</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">{t('year1Savings')}</p>
               <p className="text-2xl font-bold text-slate-900 border-b-2 border-primary-500/30 pb-1">
                 {formatCurrency(year1Savings)}
               </p>
               <p className="text-xs text-purple-600 font-medium mt-2">
-                Payback ~{paybackPeriod} Years (ROI: {roi}%)
+                {t('paybackPeriod')} ~{paybackPeriod} {t('paybackPeriod')?.includes('वर्ष') ? 'वर्ष' : 'Years'} ({t('roi')}: {roi}%)
               </p>
             </Card>
           </div>
@@ -441,7 +444,7 @@ const Analysis = () => {
           {/* Weather Integration Summary (if available) */}
           {weather && (
             <Card className="p-0 overflow-hidden">
-              <CardHeader title="Live Weather Adjustment" className="mb-0 pt-6 px-6" />
+              <CardHeader title={t('liveWeatherAdj')} className="mb-0 pt-6 px-6" />
               <CardContent className="p-6">
                 <div className="mb-5 flex items-center gap-3">
                   <div className="rounded-xl bg-sky-50 p-3 text-sky-600">
@@ -449,24 +452,24 @@ const Analysis = () => {
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-900">{weather.weatherSummary}</h3>
-                    <p className="text-xs text-slate-500">Open-Meteo microclimate conditions</p>
+                    <p className="text-xs text-slate-500">{t('openMeteoConditions')}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                   <div>
-                    <p className="text-slate-500 text-xs">Temperature</p>
+                    <p className="text-slate-500 text-xs">{t('temperature')}</p>
                     <p className="font-bold text-slate-900">{formatNumber(weather.temperature, 1)} °C</p>
                   </div>
                   <div>
-                    <p className="text-slate-500 text-xs">Cloud Cover</p>
+                    <p className="text-slate-500 text-xs">{t('cloudCover')}</p>
                     <p className="font-bold text-slate-900">{formatNumber(weather.cloudCover)}%</p>
                   </div>
                   <div>
-                    <p className="text-slate-500 text-xs">Sunshine Hours</p>
+                    <p className="text-slate-500 text-xs">{t('sunshineHours')}</p>
                     <p className="font-bold text-slate-900">{formatNumber(weather.sunshineHours, 1)} h/d</p>
                   </div>
                   <div>
-                    <p className="text-slate-500 text-xs">Weather Impact</p>
+                    <p className="text-slate-500 text-xs">{t('weatherImpact')}</p>
                     <p className="font-bold text-emerald-600">
                       {analysis.weatherAdjustmentPercent > 0 ? '+' : ''}{analysis.weatherAdjustmentPercent ?? 0}%
                     </p>
@@ -479,12 +482,12 @@ const Analysis = () => {
           {/* Dynamic 20-Year Profitability Projection */}
           <Card className="p-0 overflow-hidden">
             <CardHeader 
-              title="20-Year Cumulative Cashflow & Profitability Projection" 
+              title={t('cashflowProjectionTitle')} 
               className="mb-0 pt-6 px-6"
               action={
                 <div className="flex items-center space-x-1.5 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                   <TrendingUp size={14} className="text-primary-500" />
-                  <span>Includes 3% annual tariff hike</span>
+                  <span>{t('tariffHikeNotice')}</span>
                 </div>
               }
             />

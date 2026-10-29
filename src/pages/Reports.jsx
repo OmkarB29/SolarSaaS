@@ -141,7 +141,7 @@ const Reports = () => {
     setSuccessNotice('');
 
     try {
-      const res = await reportApiService.resendEmail(report.id);
+      const res = await reportApiService.resendEmail(report.id, language);
       await refreshHistory();
       if (res?.emailStatus === 'SENT') {
         setSuccessNotice(`Report "${report.reportName}" re-sent to your email successfully!`);

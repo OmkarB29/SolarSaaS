@@ -31,6 +31,7 @@ import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import PanelMapViewer from '../components/map/PanelMapViewer';
 import { panelOptimizerService } from '../services/panelOptimizerService';
 import { downloadSolarPotentialReport, downloadPanelOptimizationReport } from '../services/reportService';
+import { useLanguage } from '../context/LanguageContext';
 
 const DEFAULT_DIMENSIONS = {
   lengthMeters: 2.1,
@@ -78,6 +79,7 @@ const normalizePolygon = (poly) => {
 const PanelOptimizer = () => {
   const routerLocation = useLocation();
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
 
   // Retrieve rooftop polygon from navigation state or localStorage
   const rooftop = routerLocation.state?.rooftop || getStoredRooftop() || getStoredAnalysis();
@@ -313,13 +315,14 @@ const PanelOptimizer = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold text-slate-900">AI Panel Placement Optimizer</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t('panelOptimizerTitle')}</h1>
             <span className="inline-flex items-center gap-1 text-xs font-semibold bg-indigo-500/10 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-500/20">
               <Cpu size={13} className="text-indigo-600" />
               Phase 3 • Vector Geometry Engine
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-500">
+          <p className="text-xs text-slate-500 mt-1">{t('panelOptimizerSubtitle')}</p>
+          <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-slate-500">
             <span className="flex items-center gap-1 font-medium text-slate-700">
               <MapPin size={13} className="text-slate-400" />
               {address}
@@ -331,7 +334,7 @@ const PanelOptimizer = () => {
             {roofArea > 0 && (
               <>
                 <span>•</span>
-                <span className="text-slate-700 font-medium">Roof Area: {formatNumber(roofArea, 1)} m²</span>
+                <span className="text-slate-700 font-medium">{t('roofArea')}: {formatNumber(roofArea, 1)} m²</span>
               </>
             )}
             <span>•</span>
@@ -352,7 +355,7 @@ const PanelOptimizer = () => {
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             <Sliders size={14} className="text-slate-500" />
-            <span>Panel Dimensions</span>
+            <span>{t('panelDimensions')}</span>
           </button>
 
           <button
@@ -361,7 +364,7 @@ const PanelOptimizer = () => {
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             <History size={14} className="text-slate-500" />
-            <span>Layout History</span>
+            <span>{t('layoutHistory')}</span>
           </button>
 
           <button
@@ -372,7 +375,7 @@ const PanelOptimizer = () => {
             title="Export AI Panel Placement Optimization Report PDF"
           >
             <FileDown size={14} className="text-slate-500" />
-            <span>Export Report</span>
+            <span>{t('exportReport')}</span>
           </button>
 
           <button
@@ -384,12 +387,12 @@ const PanelOptimizer = () => {
             {isSaving ? (
               <>
                 <RefreshCw size={14} className="animate-spin" />
-                <span>Saving Layout...</span>
+                <span>{t('savingLayout')}</span>
               </>
             ) : (
               <>
                 <CheckCircle2 size={14} />
-                <span>Save Selected Layout</span>
+                <span>{t('saveSelectedLayout')}</span>
               </>
             )}
           </button>
@@ -432,7 +435,7 @@ const PanelOptimizer = () => {
             <Compass size={28} />
           </div>
           <div className="max-w-md mx-auto space-y-1">
-            <h3 className="text-base font-bold text-slate-900">No Rooftop Polygon Detected</h3>
+            <h3 className="text-base font-bold text-slate-900">{t('noRooftopPolygon')}</h3>
             <p className="text-xs text-slate-500">
               Draw a rooftop polygon on the interactive map to automatically generate and compare optimized panel placement layouts.
             </p>
@@ -441,7 +444,7 @@ const PanelOptimizer = () => {
             to="/map"
             className="inline-flex items-center gap-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 text-xs font-semibold shadow-xs"
           >
-            <span>Go to Map Selection</span>
+            <span>{t('goToMapSelection')}</span>
             <ArrowRight size={14} />
           </Link>
         </Card>
@@ -509,10 +512,10 @@ const PanelOptimizer = () => {
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <TrendingUp size={18} className="text-indigo-600" />
-                  <span>Layout Comparison & Performance Metrics</span>
+                  <span>{t('layoutComparison')}</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Compare density, power generation, and surface utilization against basic unaligned placement.
+                  {t('layoutComparisonDesc')}
                 </p>
               </div>
 
@@ -533,13 +536,13 @@ const PanelOptimizer = () => {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 text-3xs uppercase tracking-wider font-bold">
-                    <th className="py-2.5 px-3">Layout Mode</th>
-                    <th className="py-2.5 px-3">Panel Count</th>
-                    <th className="py-2.5 px-3">System Capacity</th>
-                    <th className="py-2.5 px-3">Annual Generation</th>
-                    <th className="py-2.5 px-3">Roof Utilization</th>
-                    <th className="py-2.5 px-3">Optimization Score</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
+                    <th className="py-2.5 px-3">{t('layoutMode')}</th>
+                    <th className="py-2.5 px-3">{t('estPanelCount')}</th>
+                    <th className="py-2.5 px-3">{t('systemSize')}</th>
+                    <th className="py-2.5 px-3">{t('annualGeneration')}</th>
+                    <th className="py-2.5 px-3">{t('rooftopUtilization')}</th>
+                    <th className="py-2.5 px-3">{t('optimizationScore')}</th>
+                    <th className="py-2.5 px-3 text-right">{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -627,7 +630,7 @@ const PanelOptimizer = () => {
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                     <Square size={15} className="text-indigo-600" />
-                    <span>Usable Area Analysis</span>
+                    <span>{t('usableAreaAnalysis')}</span>
                   </h4>
                   <span className="text-2xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
                     {activeLayout?.mode || 'BALANCED'}
@@ -636,22 +639,22 @@ const PanelOptimizer = () => {
 
                 <div className="space-y-2.5 text-xs">
                   <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                    <span className="text-slate-500">Total Rooftop Area</span>
+                    <span className="text-slate-500">{t('totalRooftopArea')}</span>
                     <strong className="text-slate-900">{formatNumber(activeLayout?.roofArea, 1)} m²</strong>
                   </div>
 
                   <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                    <span className="text-slate-500">Active Panel Surface</span>
+                    <span className="text-slate-500">{t('activePanelSurface')}</span>
                     <strong className="text-blue-700">{formatNumber(activeLayout?.usedArea, 1)} m²</strong>
                   </div>
 
                   <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                    <span className="text-slate-500">Unused Area & Aisles</span>
+                    <span className="text-slate-500">{t('unusedAreaAisles')}</span>
                     <strong className="text-amber-700">{formatNumber(activeLayout?.unusedArea, 1)} m²</strong>
                   </div>
 
                   <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                    <span className="text-slate-500">Roof Surface Utilization</span>
+                    <span className="text-slate-500">{t('roofSurfaceUtilization')}</span>
                     <strong className="text-emerald-700 font-bold text-sm">{activeLayout?.roofUtilizationPercent}%</strong>
                   </div>
                 </div>
@@ -678,7 +681,7 @@ const PanelOptimizer = () => {
               {/* Optimization Score Card */}
               <Card className="p-5 border-slate-200 bg-linear-to-br from-white to-indigo-50/30 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-500">Optimization Score</span>
+                  <span className="text-xs font-medium text-slate-500">{t('optimizationScore')}</span>
                   <Gauge size={18} className="text-indigo-600" />
                 </div>
 
@@ -694,7 +697,7 @@ const PanelOptimizer = () => {
                 </p>
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs text-slate-600">
-                  <span>Specific Yield:</span>
+                  <span>{t('specificYield')}</span>
                   <strong className="text-slate-900">{activeLayout?.specificYieldKwhPerKwp || 1540} kWh/kWp</strong>
                 </div>
               </Card>
@@ -708,7 +711,7 @@ const PanelOptimizer = () => {
                 <Sparkles size={18} />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">AI Solar Advisor Layout Insights</h3>
+                <h3 className="text-sm font-bold text-slate-900">{t('aiInsightsTitle')}</h3>
                 <p className="text-xs text-slate-500">
                   Strategic trade-offs and operational engineering recommendations for {activeLayout?.title}
                 </p>

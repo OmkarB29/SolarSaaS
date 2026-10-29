@@ -91,6 +91,48 @@ const getReportLabel = (key, lang = 'en') => {
       mr: 'CO2 Reduction (कार्बन उत्सर्जन घट)',
       kn: 'CO2 Reduction (ಕಾರ್ಬನ್ ಕಡಿತ)',
     },
+    address: {
+      en: 'Site Address',
+      hi: 'Site Address (स्थल पता)',
+      mr: 'Site Address (प्रकल्प पत्ता)',
+      kn: 'Site Address (ಸ್ಥಳ ವಿಳಾಸ)',
+    },
+    coordinates: {
+      en: 'Coordinates',
+      hi: 'Coordinates (निर्देशांक)',
+      mr: 'Coordinates (अक्षांश-रेखांश)',
+      kn: 'Coordinates (ನಿರ್ದೇಶಾಂಕಗಳು)',
+    },
+    irradiance: {
+      en: 'Annual Solar Irradiance',
+      hi: 'Solar Irradiance (वार्षिक सौर विकिरण)',
+      mr: 'Solar Irradiance (वार्षिक सौर किरणोत्सर्ग)',
+      kn: 'Solar Irradiance (ವಾರ್ಷಿಕ ಸೌರ ವಿಕಿರಣ)',
+    },
+    peakSunHours: {
+      en: 'Peak Sun Hours',
+      hi: 'Peak Sun Hours (चरम धूप घंटे)',
+      mr: 'Peak Sun Hours (कमाल सूर्यप्रकाश तास)',
+      kn: 'Peak Sun Hours (ಗರಿಷ್ಠ ಬಿಸಿಲಿನ ಸಮಯ)',
+    },
+    temp: {
+      en: 'Average Temperature',
+      hi: 'Temperature (औसत तापमान)',
+      mr: 'Temperature (सरासरी तापमान)',
+      kn: 'Temperature (ಸರಾಸರಿ ತಾಪಮಾನ)',
+    },
+    cloud: {
+      en: 'Average Cloud Cover',
+      hi: 'Cloud Cover (औसत बादल आवरण)',
+      mr: 'Cloud Cover (ढगाळ वातावरण)',
+      kn: 'Cloud Cover (ಸರಾಸರಿ ಮೋಡ ಕವಿದ ವಾತಾವರಣ)',
+    },
+    homes: {
+      en: 'Equivalent Homes Powered',
+      hi: 'Homes Powered (घरों को बिजली)',
+      mr: 'Homes Powered (घरांना वीज पुरवठा)',
+      kn: 'Homes Powered (ವಿದ್ಯುತ್ ಪಡೆಯುವ ಮನೆಗಳು)',
+    },
   };
   return labels[key]?.[lang] || labels[key]?.en || key;
 };
@@ -346,7 +388,8 @@ export const downloadAnalysisReport = (analysis, forecastData = null, language =
   document.save(`SolarScope-Analysis-${new Date().toISOString().slice(0, 10)}.pdf`);
 };
 
-export const downloadSolarPotentialReport = (solarData, userInfo = null, aiRecommendation = null) => {
+export const downloadSolarPotentialReport = (solarData, userInfo = null, aiRecommendation = null, language = null) => {
+  const lang = language || localStorage.getItem('solarscope.language') || 'en';
   const document = new jsPDF();
   const pageWidth = document.internal.pageSize.getWidth();
   const margin = 20;
@@ -355,10 +398,15 @@ export const downloadSolarPotentialReport = (solarData, userInfo = null, aiRecom
   const totalPages = aiRecommendation ? 3 : 2;
 
   // PAGE 1: PVGIS Technical Assessment
+  const reportHeading = lang === 'hi' ? 'Solar Potential Technical Assessment Report (सौर क्षमता रिपोर्ट)'
+    : lang === 'mr' ? 'Solar Potential Technical Assessment Report (सौर क्षमता अहवाल)'
+    : lang === 'kn' ? 'Solar Potential Technical Assessment Report (ಸೌರ ಸಾಮರ್ಥ್ಯ ವರದಿ)'
+    : 'Solar Potential Technical Assessment Report';
+
   document.setTextColor(15, 23, 42);
   document.setFont('helvetica', 'bold');
-  document.setFontSize(18);
-  document.text('Solar Potential Technical Assessment Report', margin, y);
+  document.setFontSize(16);
+  document.text(reportHeading, margin, y);
 
   y += 7;
   document.setFont('helvetica', 'normal');
@@ -409,24 +457,24 @@ export const downloadSolarPotentialReport = (solarData, userInfo = null, aiRecom
   const payback = solarData.paybackYears || solarData.paybackPeriod || 0;
 
   const rows = [
-    ['Site Address', solarData.address || 'Rooftop Site'],
-    ['Coordinates', `${solarData.latitude?.toFixed(5)}° N, ${solarData.longitude?.toFixed(5)}° E`],
-    ['Total Roof Area', `${formatNumber(solarData.roofAreaM2, 1)} m²`],
-    ['Usable Rooftop Area', `${formatNumber(usableArea, 1)} m² (75% utilization factor)`],
-    ['Estimated System Size', `${formatNumber(sysSize, 1)} kWp`],
-    ['Estimated Panel Count', `${panelCount} modules (Monocrystalline 550W)`],
-    ['Annual Solar Irradiance', `${formatNumber(solarData.annualIrradianceKwhM2, 1)} kWh/m²`],
-    ['Estimated Annual Energy', `${formatNumber(annualGen)} kWh/year`],
-    ['Peak Sun Hours', `${formatNumber(solarData.peakSunHours, 1)} hours/day`],
-    ['Average Temperature', `${formatNumber(solarData.temperatureAvg, 1)} °C`],
-    ['Average Cloud Cover', `${formatNumber(solarData.cloudCoverPercent, 1)}%`],
+    [getReportLabel('address', lang), solarData.address || 'Rooftop Site'],
+    [getReportLabel('coordinates', lang), `${solarData.latitude?.toFixed(5)}° N, ${solarData.longitude?.toFixed(5)}° E`],
+    [getReportLabel('roofArea', lang), `${formatNumber(solarData.roofAreaM2, 1)} m²`],
+    [getReportLabel('usableArea', lang), `${formatNumber(usableArea, 1)} m² (75% utilization factor)`],
+    [getReportLabel('systemSize', lang), `${formatNumber(sysSize, 1)} kWp`],
+    [getReportLabel('panels', lang), `${panelCount} modules (Monocrystalline 550W)`],
+    [getReportLabel('irradiance', lang), `${formatNumber(solarData.annualIrradianceKwhM2, 1)} kWh/m²`],
+    [getReportLabel('annualGen', lang), `${formatNumber(annualGen)} kWh/year`],
+    [getReportLabel('peakSunHours', lang), `${formatNumber(solarData.peakSunHours, 1)} hours/day`],
+    [getReportLabel('temp', lang), `${formatNumber(solarData.temperatureAvg, 1)} °C`],
+    [getReportLabel('cloud', lang), `${formatNumber(solarData.cloudCoverPercent, 1)}%`],
     ['Weather Adjustment Factor', `${formatNumber(solarData.weatherAdjustmentFactor, 3)}`],
     ['Roof Utilization', `${formatNumber(solarData.roofUtilizationPercent || 75.0, 1)}%`],
-    ['Carbon Offset', `${formatNumber(solarData.carbonOffsetKg)} kg CO₂/year`],
-    ['Equivalent Homes Powered', `${formatNumber(solarData.homesPowered, 1)} residential homes`],
-    ['Estimated Annual Savings', `₹${formatNumber(solarData.annualSavings)}/year`],
-    ['Estimated Payback Period', `${formatNumber(payback, 1)} years`],
-    ['Recommended Battery Storage', `${formatNumber(solarData.recommendedBatteryKwh || Math.max(10, Math.round(annualGen / 365 * 1.2)))} kWh (LiFePO4)`],
+    [getReportLabel('co2', lang), `${formatNumber(solarData.carbonOffsetKg)} kg CO₂/year`],
+    [getReportLabel('homes', lang), `${formatNumber(solarData.homesPowered, 1)} residential homes`],
+    [getReportLabel('savings', lang), `INR ${formatNumber(solarData.annualSavings)}/year`],
+    [getReportLabel('payback', lang), `${formatNumber(payback, 1)} years`],
+    [getReportLabel('battery', lang), `${formatNumber(solarData.recommendedBatteryKwh || Math.max(10, Math.round(annualGen / 365 * 1.2)))} kWh (LiFePO4)`],
   ];
 
   rows.forEach(([label, value], index) => {

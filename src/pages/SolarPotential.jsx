@@ -48,6 +48,7 @@ import { solarApiService } from '../services/solarApiService';
 import { aiRecommendationService } from '../services/aiRecommendationService';
 import { downloadSolarPotentialReport } from '../services/reportService';
 import InteractiveMap from '../components/map/InteractiveMap';
+import { useLanguage } from '../context/LanguageContext';
 
 ChartJS.register(
   CategoryScale,
@@ -137,6 +138,7 @@ const getStoredAnalysis = () => {
 const SolarPotential = () => {
   const routerLocation = useLocation();
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
 
   // Retrieve coordinates from navigation state, stored rooftop, or recent analysis
   const rooftop = routerLocation.state?.rooftop || getStoredRooftop() || getStoredAnalysis();
@@ -322,7 +324,7 @@ const SolarPotential = () => {
   // Download PDF Report (includes AI Advisor section if available)
   const handleDownloadPDF = () => {
     if (!solarData) return;
-    downloadSolarPotentialReport(solarData, null, aiRecommendation);
+    downloadSolarPotentialReport(solarData, null, aiRecommendation, language);
   };
 
   // Chart.js Configuration for Monthly Solar Generation
@@ -414,13 +416,14 @@ const SolarPotential = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold text-slate-900">Solar Potential Technical Assessment</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t('solarPotentialTitle')}</h1>
             <span className="inline-flex items-center gap-1 text-xs font-semibold bg-amber-500/10 text-amber-700 px-2.5 py-1 rounded-full border border-amber-500/20">
               <Sun size={12} className="text-amber-500" />
               PVGIS + Weather Integration
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-500">
+          <p className="text-xs text-slate-500 mt-1">{t('solarPotentialSubtitle')}</p>
+          <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-slate-500">
             <span className="flex items-center gap-1 font-medium text-slate-700">
               <MapPin size={13} className="text-slate-400" />
               {address}
@@ -432,7 +435,7 @@ const SolarPotential = () => {
             {solarData?.peakSunHours && (
               <>
                 <span>•</span>
-                <span className="text-slate-500">Peak Sun: {formatNumber(solarData.peakSunHours, 1)} hrs/day</span>
+                <span className="text-slate-500">{t('peakSunHours')}: {formatNumber(solarData.peakSunHours, 1)} hrs/day</span>
               </>
             )}
           </div>
@@ -444,10 +447,10 @@ const SolarPotential = () => {
             type="button"
             onClick={handleDownloadPDF}
             disabled={!solarData || isLoading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50 transition-colors cursor-pointer"
           >
             <FileDown size={15} />
-            <span>Download PDF Assessment</span>
+            <span>{t('downloadPdfAssessment')}</span>
           </button>
 
           <button
@@ -457,7 +460,7 @@ const SolarPotential = () => {
             className="inline-flex items-center gap-2 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white px-5 py-2.5 text-xs font-semibold shadow-xs shadow-primary-500/30 transition-colors cursor-pointer"
           >
             <Sparkles size={15} />
-            <span>{isSaving ? 'Saving...' : 'Save Solar Analysis'}</span>
+            <span>{isSaving ? t('savingSolarAnalysis') : t('saveSolarAnalysis')}</span>
           </button>
         </div>
       </div>
@@ -564,28 +567,28 @@ const SolarPotential = () => {
                     <span className={`w-2 h-2 rounded-full ${badgeInfo.dot}`} />
                     {solarData.solarQualityLabel || badgeInfo.label}
                   </span>
-                  <span className="text-xs text-slate-400">Technical Quality Index</span>
+                  <span className="text-xs text-slate-400">{t('technicalQualityIndex')}</span>
                 </div>
                 <div className="flex items-baseline gap-3">
                   <span className="text-4xl font-black tracking-tight text-white">{solarData.solarScore}</span>
                   <span className="text-slate-400 text-sm font-medium">/ 100 Solar Score</span>
                 </div>
                 <p className="text-xs text-slate-300 max-w-xl">
-                  {badgeInfo.description} Derived from European Commission PVGIS radiation models and live Open-Meteo weather factors.
+                  {badgeInfo.description}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
                 <div>
-                  <span className="text-2xs text-slate-400 font-medium">Annual Generation</span>
+                  <span className="text-2xs text-slate-400 font-medium">{t('annualGeneration')}</span>
                   <p className="text-xl font-bold text-amber-400 mt-0.5">{formatNumber(solarData.annualGenerationKwh || solarData.annualEnergyKwh)} <span className="text-xs text-slate-400 font-normal">kWh</span></p>
                 </div>
                 <div>
-                  <span className="text-2xs text-slate-400 font-medium">Peak Sun Hours</span>
+                  <span className="text-2xs text-slate-400 font-medium">{t('peakSunHours')}</span>
                   <p className="text-xl font-bold text-sky-400 mt-0.5">{formatNumber(solarData.peakSunHours, 1)} <span className="text-xs text-slate-400 font-normal">hrs/day</span></p>
                 </div>
                 <div>
-                  <span className="text-2xs text-slate-400 font-medium">Carbon Reduction</span>
+                  <span className="text-2xs text-slate-400 font-medium">{t('carbonReduction')}</span>
                   <p className="text-xl font-bold text-emerald-400 mt-0.5">{formatNumber(solarData.carbonOffsetKg)} <span className="text-xs text-slate-400 font-normal">kg CO₂</span></p>
                 </div>
               </div>
@@ -607,7 +610,7 @@ const SolarPotential = () => {
             {/* Card 2: Annual Irradiance */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Annual Irradiance</span>
+                <span className="text-xs font-medium">{t('annualIrradiance')}</span>
                 <Sun size={16} className="text-amber-600" />
               </div>
               <p className="text-2xl font-bold text-slate-900">{formatNumber(solarData.annualIrradianceKwhM2, 1)} <span className="text-xs font-normal text-slate-500">kWh/m²</span></p>
@@ -617,7 +620,7 @@ const SolarPotential = () => {
             {/* Card 3: Annual Generation */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Annual Generation</span>
+                <span className="text-xs font-medium">{t('annualGeneration')}</span>
                 <Zap size={16} className="text-amber-500" />
               </div>
               <p className="text-2xl font-bold text-slate-900">{formatNumber(solarData.annualGenerationKwh || solarData.annualEnergyKwh)} <span className="text-xs font-normal text-slate-500">kWh</span></p>
@@ -627,17 +630,17 @@ const SolarPotential = () => {
             {/* Card 4: Roof Area */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Rooftop Area</span>
+                <span className="text-xs font-medium">{t('roofArea')}</span>
                 <Layers size={16} className="text-indigo-500" />
               </div>
               <p className="text-2xl font-bold text-slate-900">{formatNumber(solarData.roofAreaM2, 1)} <span className="text-xs font-normal text-slate-500">m²</span></p>
-              <p className="text-2xs text-slate-500 mt-1">Usable: {formatNumber(solarData.roofAreaM2 * 0.75, 1)} m²</p>
+              <p className="text-2xs text-slate-500 mt-1">{t('usableArea')}: {formatNumber(solarData.roofAreaM2 * 0.75, 1)} m²</p>
             </Card>
 
             {/* Card 5: System Size */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">System Size</span>
+                <span className="text-xs font-medium">{t('systemSize')}</span>
                 <Gauge size={16} className="text-sky-500" />
               </div>
               <p className="text-2xl font-bold text-slate-900">{formatNumber(solarData.systemSizeKWp, 1)} <span className="text-xs font-normal text-slate-500">kWp</span></p>
@@ -647,7 +650,7 @@ const SolarPotential = () => {
             {/* Card 6: Panel Count */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Panel Count</span>
+                <span className="text-xs font-medium">{t('estPanelCount')}</span>
                 <Sun size={16} className="text-emerald-500" />
               </div>
               <p className="text-2xl font-bold text-slate-900">{solarData.estimatedPanelCount || solarData.maxArrayPanels} <span className="text-xs font-normal text-slate-500">mods</span></p>
@@ -657,7 +660,7 @@ const SolarPotential = () => {
             {/* Card 7: Annual Savings */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Annual Savings</span>
+                <span className="text-xs font-medium">{t('annualSavings')}</span>
                 <Banknote size={16} className="text-emerald-600" />
               </div>
               <p className="text-2xl font-bold text-emerald-600">{formatCurrency(solarData.annualSavings)}</p>
@@ -667,7 +670,7 @@ const SolarPotential = () => {
             {/* Card 8: Payback Period */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Payback Period</span>
+                <span className="text-xs font-medium">{t('paybackPeriod')}</span>
                 <PiggyBank size={16} className="text-blue-600" />
               </div>
               <p className="text-2xl font-bold text-slate-900">~{formatNumber(solarData.paybackYears || solarData.paybackPeriod, 1)} <span className="text-xs font-normal text-slate-500">years</span></p>
@@ -677,7 +680,7 @@ const SolarPotential = () => {
             {/* Card 9: Carbon Offset */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Carbon Offset</span>
+                <span className="text-xs font-medium">{t('carbonReduction')}</span>
                 <TreePine size={16} className="text-emerald-500" />
               </div>
               <p className="text-2xl font-bold text-emerald-700">{formatNumber(solarData.carbonOffsetKg)} <span className="text-xs font-normal text-slate-500">kg/yr</span></p>
@@ -687,7 +690,7 @@ const SolarPotential = () => {
             {/* Card 10: Homes Powered */}
             <Card className="p-4 border-slate-200">
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-medium">Homes Powered</span>
+                <span className="text-xs font-medium">{t('homesPowered')}</span>
                 <Home size={16} className="text-teal-500" />
               </div>
               <p className="text-2xl font-bold text-slate-900">{formatNumber(solarData.homesPowered, 1)} <span className="text-xs font-normal text-slate-500">homes</span></p>
@@ -701,7 +704,7 @@ const SolarPotential = () => {
             <Card className="lg:col-span-2 p-5 border-slate-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Monthly Solar Generation Curve (Chart.js)</h3>
+                  <h3 className="text-base font-bold text-slate-900">{t('monthlyGenerationCurve')}</h3>
                   <p className="text-xs text-slate-500">12-Month technical yield simulation and seasonal irradiance trends</p>
                 </div>
                 <div className="text-right">
@@ -721,7 +724,7 @@ const SolarPotential = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                     <MapPin size={15} className="text-amber-500" />
-                    <span>Rooftop Satellite View</span>
+                    <span>{t('rooftopSatelliteView')}</span>
                   </h3>
                   <span className="text-2xs font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
                     High-Res Satellite
@@ -843,7 +846,7 @@ const SolarPotential = () => {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                      <span>AI Solar Advisor & Strategic Insights</span>
+                      <span>{t('aiSolarAdvisor')}</span>
                       <span className="text-2xs font-semibold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
                         OpenAI GPT-4o
                       </span>
@@ -862,7 +865,7 @@ const SolarPotential = () => {
                   className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
                 >
                   <History size={14} className="text-slate-500" />
-                  <span>Advisor History</span>
+                  <span>{t('recHistory')}</span>
                 </button>
 
                 <button
@@ -874,12 +877,12 @@ const SolarPotential = () => {
                   {isGeneratingAI ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      <span>Analyzing Rooftop...</span>
+                      <span>{t('generatingAi')}</span>
                     </>
                   ) : (
                     <>
                       <Sparkles size={14} />
-                      <span>{aiRecommendation ? 'Regenerate AI Analysis' : 'Generate AI Recommendation'}</span>
+                      <span>{aiRecommendation ? t('generateAiRec') : t('generateAiRec')}</span>
                     </>
                   )}
                 </button>

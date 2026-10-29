@@ -23,11 +23,13 @@ import { weatherApiService } from '../services/weatherApiService';
 import { googleSolarService } from '../services/googleSolarService';
 import { applyWeatherAdjustment, calculatePolygonMetrics, calculateRooftopArea, estimateSolarAnalysis } from '../services/solarAnalysisService';
 import { isPointInPolygon } from '../utils/geoUtils';
+import { useLanguage } from '../context/LanguageContext';
 
 const DEFAULT_POSITION = [12.9716, 77.5946];
 
 const MapSelection = () => {
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
   const hasUserSelectedLocation = useRef(false);
   const weatherDebounceRef = useRef(null);
   const solarDebounceRef = useRef(null);
@@ -340,8 +342,8 @@ const MapSelection = () => {
     <div className="flex h-full flex-col space-y-6">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Map Selection & Rooftop Analysis</h1>
-          <p className="text-slate-500 mt-1">Outline a specific rooftop area on the Google Satellite engine to optimize panels and calculate solar yield.</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t('mapSelectionTitle')}</h1>
+          <p className="text-slate-500 mt-1">{t('mapSelectionSubtitle')}</p>
         </div>
       </div>
 
@@ -361,7 +363,7 @@ const MapSelection = () => {
           {isLoadingSolarData && (
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs">
               <Zap size={15} className="text-amber-500 animate-bounce" />
-              <span>Analyzing Google Solar photogrammetry...</span>
+              <span>{t('analyzingPhotogrammetry')}</span>
             </div>
           )}
 
@@ -370,20 +372,20 @@ const MapSelection = () => {
               <div className="flex items-center justify-between font-bold text-amber-900">
                 <span className="flex items-center gap-1.5">
                   <Sun size={15} className="text-amber-600" />
-                  Google Solar Climate Profile
+                  {t('climateProfile')}
                 </span>
                 <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-mono font-semibold">
-                  {googleSolarData.quality} QUALITY
+                  {googleSolarData.quality} {t('qualityLabel')}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-slate-700">
                 <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70">
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Sunshine/Yr</span>
+                  <span className="text-[10px] text-slate-500 block uppercase font-medium">{t('sunshinePerYear')}</span>
                   <span className="font-extrabold text-sm text-slate-900">{Math.round(googleSolarData.maxSunshineHoursPerYear)}h</span>
                 </div>
                 <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70">
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Standard Module</span>
+                  <span className="text-[10px] text-slate-500 block uppercase font-medium">{t('standardModule')}</span>
                   <span className="font-extrabold text-sm text-slate-900">{googleSolarData.panelCapacityWatts} W</span>
                 </div>
               </div>
@@ -395,7 +397,7 @@ const MapSelection = () => {
           {/* Rooftop Boundary Drawing & Measurement Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">Target Rooftop Boundary</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">{t('targetBoundary')}</h3>
               {polygonCoordinates.length > 0 && (
                 <button
                   type="button"
@@ -403,7 +405,7 @@ const MapSelection = () => {
                   className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors cursor-pointer"
                 >
                   <Trash2 size={13} />
-                  <span>Clear Outline</span>
+                  <span>{t('clearOutline')}</span>
                 </button>
               )}
             </div>
@@ -418,15 +420,15 @@ const MapSelection = () => {
               }`}
             >
               <Compass size={18} className={isDrawing ? 'animate-spin text-blue-600' : 'text-slate-600'} />
-              <span>{isDrawing ? 'Drawing Active (Click Roof Corners)' : 'Draw Custom Rooftop Outline'}</span>
+              <span>{isDrawing ? t('drawingActive') : t('drawCustomBoundary')}</span>
             </button>
 
             {/* Active Drawn Rooftop Area Display */}
             {polygonCoordinates.length >= 3 && area > 0 ? (
               <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Selected Rooftop Area</span>
-                  <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">Custom Area</span>
+                  <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">{t('selectedRooftopArea')}</span>
+                  <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">{t('customArea')}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
                   <div className="flex items-baseline space-x-1">
@@ -443,16 +445,16 @@ const MapSelection = () => {
                 {polygonMetrics.dimensionsSummary !== '-' && (
                   <div className="rounded-lg bg-blue-100/70 p-2.5 text-[11px] text-blue-900 space-y-1">
                     <div className="flex justify-between font-bold">
-                      <span>Physical Dimensions:</span>
+                      <span>{t('physicalDimensions')}</span>
                       <span className="font-mono text-blue-950">{polygonMetrics.dimensionsSummary}</span>
                     </div>
                     <div className="flex justify-between text-blue-800 text-[10px]">
-                      <span>Perimeter:</span>
+                      <span>{t('perimeter')}</span>
                       <span className="font-mono">{polygonMetrics.perimeterMeters} m</span>
                     </div>
                     {polygonMetrics.sideLengths.length > 0 && (
                       <div className="text-[10px] text-blue-700 border-t border-blue-200/60 pt-1 flex flex-wrap gap-x-2">
-                        <span>Sides:</span>
+                        <span>{t('sides')}</span>
                         <span className="font-mono">{polygonMetrics.sideLengths.map((s) => `${s}m`).join(' × ')}</span>
                       </div>
                     )}
@@ -460,19 +462,15 @@ const MapSelection = () => {
                 )}
 
                 <p className="text-xs text-blue-700">
-                  Fits approx. <strong className="text-blue-950">{estimatedPanels}</strong> standard panels
+                  {t('fitsApproxPanels')} <strong className="text-blue-950">{estimatedPanels}</strong> {t('standardPanels')}
                   {panelsInDrawnArea.length > 0 && ` (${panelsInDrawnArea.length} Google Solar modules in bounds)`}.
-                </p>
-
-                <p className="text-[11px] text-slate-500 italic">
-                  💡 Tip: To assess a smaller subsection (e.g. 250–450 m²), click "Draw Custom Rooftop Outline" and trace that specific roof portion.
                 </p>
 
                 {/* Show Panels on Roof Toggle inside drawn perimeter */}
                 {panelsInDrawnArea.length > 0 && (
                   <div className="pt-2 border-t border-blue-200/60 space-y-2">
                     <div className="flex items-center justify-between text-slate-700">
-                      <span className="font-medium text-[11px]">Show Panels Inside Rooftop</span>
+                      <span className="font-medium text-[11px]">{t('showPanelsInsideRooftop')}</span>
                       <input
                         type="checkbox"
                         checked={showSolarPanels}
@@ -484,7 +482,7 @@ const MapSelection = () => {
                     {showSolarPanels && (
                       <div className="space-y-1.5 pt-1">
                         <div className="flex items-center justify-between text-[11px] text-slate-700">
-                          <span>Active Modules in Area:</span>
+                          <span>{t('activeModulesInArea')}</span>
                           <span className="font-extrabold text-blue-800">{panelCountSlider} / {panelsInDrawnArea.length}</span>
                         </div>
                         <input
@@ -496,8 +494,8 @@ const MapSelection = () => {
                           className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                         />
                         <div className="flex items-center justify-between text-[10px] bg-white p-2 rounded-lg border border-blue-200/70 text-slate-700 font-medium shadow-2xs">
-                          <span>Solar Yield: <strong className="text-blue-900 font-bold">{activeThroughputKwh.toLocaleString('en-IN')} kWh/yr</strong></span>
-                          <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Max Radiance First</span>
+                          <span>{t('solarYield')} <strong className="text-blue-900 font-bold">{activeThroughputKwh.toLocaleString('en-IN')} kWh/yr</strong></span>
+                          <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">{t('maxRadianceFirst')}</span>
                         </div>
                       </div>
                     )}
@@ -506,8 +504,8 @@ const MapSelection = () => {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-4 text-center text-xs text-slate-500 space-y-1">
-                <p className="font-semibold text-slate-700">No Rooftop Area Selected</p>
-                <p>Click "Draw Custom Rooftop Outline" and click the corners of the building on the satellite map.</p>
+                <p className="font-semibold text-slate-700">{t('noBoundarySelected')}</p>
+                <p>{t('noBoundaryHint')}</p>
               </div>
             )}
           </div>
@@ -538,7 +536,7 @@ const MapSelection = () => {
               className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-blue-600 hover:bg-blue-700 py-3.5 font-bold text-white shadow-md shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Cpu size={18} />
-              <span>AI Panel Optimizer</span>
+              <span>{t('aiPanelOptimizerBtn')}</span>
               <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
             </button>
 
@@ -548,7 +546,7 @@ const MapSelection = () => {
               disabled={isSavingAnalysis || !area || polygonCoordinates.length < 3}
               className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-3 font-semibold text-xs text-white shadow-md transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
             >
-              <span>{isSavingAnalysis ? 'Syncing...' : 'Save & Sync Analysis'}</span>
+              <span>{isSavingAnalysis ? t('syncingAnalysis') : t('saveSyncAnalysisBtn')}</span>
               <Layers size={16} className="transition-transform group-hover:translate-x-1" />
             </button>
 
@@ -573,7 +571,7 @@ const MapSelection = () => {
               className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3 font-semibold text-xs text-white shadow-md shadow-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Sun size={16} />
-              <span>Assess Solar Potential</span>
+              <span>{t('assessSolarBtn')}</span>
               <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </button>
           </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Navigation, Search } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 const SearchLocation = ({
   query,
@@ -10,15 +11,17 @@ const SearchLocation = ({
   isLocating,
   error,
 }) => {
+  const { t } = useLanguage();
+
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">Location Search</h3>
+      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">{t('locationSearch')}</h3>
       <form onSubmit={onSearch} className="space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Enter address or coordinates..."
+            placeholder={t('searchLocationPlaceholder')}
             className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
@@ -28,9 +31,9 @@ const SearchLocation = ({
         <button
           type="submit"
           disabled={isSearching}
-          className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white shadow-sm shadow-slate-900/20 transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white shadow-sm shadow-slate-900/20 transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
         >
-          {isSearching ? 'Searching...' : 'Search Location'}
+          {isSearching ? t('searchingLocation') : t('searchLocationBtn')}
         </button>
       </form>
 
@@ -38,10 +41,10 @@ const SearchLocation = ({
         type="button"
         onClick={onUseMyLocation}
         disabled={isLocating}
-        className="flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-100 py-2.5 font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+        className="flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-100 py-2.5 font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
       >
         <Navigation size={18} />
-        <span>{isLocating ? 'Detecting...' : 'My Location'}</span>
+        <span>{isLocating ? t('detectingLocation') : t('myLocationBtn')}</span>
       </button>
 
       {error && (

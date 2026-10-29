@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertCircle, Banknote, CloudSun, Leaf, PanelsTopLeft, TrendingUp, Zap } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useLanguage } from '../../context/LanguageContext';
 
 const formatNumber = (value, digits = 0) =>
   value === null || value === undefined
@@ -13,15 +14,17 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const metricCards = [
-  { key: 'monthlyGeneration', label: 'Monthly Generation', unit: 'kWh', icon: Zap, tone: 'bg-yellow-100 text-yellow-600' },
-  { key: 'installationCost', label: 'Installation Cost', unit: '', icon: Banknote, tone: 'bg-blue-100 text-blue-600' },
-  { key: 'roi', label: 'Projected ROI', unit: '%', icon: TrendingUp, tone: 'bg-green-100 text-green-600' },
-  { key: 'co2Reduction', label: 'CO2 Reduction', unit: 'kg/yr', icon: Leaf, tone: 'bg-emerald-100 text-emerald-600' },
-];
-
 const AnalysisResults = ({ results }) => {
+  const { t } = useLanguage();
+
   if (!results) return null;
+
+  const metricCards = [
+    { key: 'monthlyGeneration', label: t('monthlyGeneration'), unit: 'kWh', icon: Zap, tone: 'bg-yellow-100 text-yellow-600' },
+    { key: 'installationCost', label: t('installationCost'), unit: '', icon: Banknote, tone: 'bg-blue-100 text-blue-600' },
+    { key: 'roi', label: t('projectedRoi'), unit: '%', icon: TrendingUp, tone: 'bg-green-100 text-green-600' },
+    { key: 'co2Reduction', label: t('co2Reduction'), unit: 'kg/yr', icon: Leaf, tone: 'bg-emerald-100 text-emerald-600' },
+  ];
 
   const formatValue = (key, value) => {
     if (key === 'installationCost') return formatCurrency(value);
@@ -52,7 +55,7 @@ const AnalysisResults = ({ results }) => {
                   <Icon size={22} />
                 </div>
                 <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                  Live estimate
+                  {t('liveEstimate')}
                 </span>
               </div>
               <p className="text-sm font-medium text-slate-500">{item.label}</p>
@@ -71,7 +74,7 @@ const AnalysisResults = ({ results }) => {
 
               {item.key === 'roi' && results.paybackPeriod && (
                 <p className="mt-1.5 text-[11px] font-semibold text-green-700 bg-green-50/70 border border-green-200/50 px-2 py-0.5 rounded-md inline-block">
-                  Payback: ~{results.paybackPeriod} years
+                  {t('paybackPeriod')}: ~{results.paybackPeriod} {t('paybackPeriod')?.includes('वर्ष') ? 'वर्षे' : (t('paybackPeriod')?.includes('ವರ್ಷ') ? 'ವರ್ಷಗಳು' : 'years')}
                 </p>
               )}
             </div>
@@ -86,34 +89,34 @@ const AnalysisResults = ({ results }) => {
               <CloudSun size={22} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-900">Weather Adjustment</h3>
-              <p className="text-sm text-slate-500">Open-Meteo conditions applied without changing the base estimate.</p>
+              <h3 className="text-lg font-bold text-slate-900">{t('liveWeatherAdj')}</h3>
+              <p className="text-sm text-slate-500">{t('openMeteoConditions')}</p>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-5">
             <div>
-              <p className="text-sm text-slate-500">Temperature</p>
+              <p className="text-sm text-slate-500">{t('temperature')}</p>
               <p className="text-xl font-bold text-slate-900">
-                {formatNumber(weather.temperature, 1)} <span className="text-sm font-semibold text-slate-500">C</span>
+                {formatNumber(weather.temperature, 1)} <span className="text-sm font-semibold text-slate-500">°C</span>
               </p>
             </div>
             <div>
-              <p className="text-sm text-slate-500">Cloud Cover</p>
+              <p className="text-sm text-slate-500">{t('cloudCover')}</p>
               <p className="text-xl font-bold text-slate-900">
                 {formatNumber(weather.cloudCover)} <span className="text-sm font-semibold text-slate-500">%</span>
               </p>
             </div>
             <div>
-              <p className="text-sm text-slate-500">Sunshine Hours</p>
+              <p className="text-sm text-slate-500">{t('sunshineHours')}</p>
               <p className="text-xl font-bold text-slate-900">{formatNumber(weather.sunshineHours, 1)}</p>
             </div>
             <div>
-              <p className="text-sm text-slate-500">Summary</p>
+              <p className="text-sm text-slate-500">{t('details')}</p>
               <p className="text-base font-bold text-slate-900">{weather.weatherSummary}</p>
             </div>
             <div>
-              <p className="text-sm text-slate-500">Adjusted Generation</p>
+              <p className="text-sm text-slate-500">{t('weatherImpact')}</p>
               <p className="text-xl font-bold text-slate-900">
                 {formatNumber(results.weatherAdjustedMonthlyGeneration)} <span className="text-sm font-semibold text-slate-500">kWh/mo</span>
               </p>
@@ -128,8 +131,8 @@ const AnalysisResults = ({ results }) => {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.5fr_0.8fr]">
         <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
           <div className="mb-5">
-            <h3 className="text-lg font-bold text-slate-900">Generation and Savings Forecast</h3>
-            <p className="text-sm text-slate-500">Six-month projection from selected rooftop geometry.</p>
+            <h3 className="text-lg font-bold text-slate-900">{t('monthlyEnergyGeneration')}</h3>
+            <p className="text-sm text-slate-500">{t('systemAnalysisSubtitle')}</p>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -169,32 +172,32 @@ const AnalysisResults = ({ results }) => {
               <PanelsTopLeft size={22} />
             </div>
             <div>
-              <h3 className="font-bold">System Snapshot</h3>
-              <p className="text-sm text-slate-400">Based on selected polygon area</p>
+              <h3 className="font-bold">{t('dynamicSystemDesign')}</h3>
+              <p className="text-sm text-slate-400">{t('usableArea')}</p>
             </div>
           </div>
           <div className="space-y-4 text-sm">
             <div className="flex justify-between border-b border-white/10 pb-3">
-              <span className="text-slate-400">Estimated panels</span>
+              <span className="text-slate-400">{t('estPanelCount')}</span>
               <span className="font-semibold">{formatNumber(results.panels)}</span>
             </div>
             <div className="flex justify-between border-b border-white/10 pb-3">
-              <span className="text-slate-400">Base yearly generation</span>
+              <span className="text-slate-400">{t('annualGeneration')}</span>
               <span className="font-semibold">{formatNumber(results.yearlyGeneration)} kWh</span>
             </div>
             {'weatherAdjustedYearlyGeneration' in results && (
               <div className="flex justify-between border-b border-white/10 pb-3">
-                <span className="text-slate-400">Weather adjusted</span>
+                <span className="text-slate-400">{t('liveWeatherAdj')}</span>
                 <span className="font-semibold">{formatNumber(results.weatherAdjustedYearlyGeneration)} kWh</span>
               </div>
             )}
             <div className="flex justify-between border-b border-white/10 pb-3">
-              <span className="text-slate-400">Yearly savings</span>
+              <span className="text-slate-400">{t('annualSavings')}</span>
               <span className="font-semibold">{formatCurrency(results.yearlySavings)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Payback period</span>
-              <span className="font-semibold">{results.paybackPeriod} years</span>
+              <span className="text-slate-400">{t('paybackPeriod')}</span>
+              <span className="font-semibold">{results.paybackPeriod} {t('paybackPeriod')?.includes('वर्ष') ? 'वर्ष' : 'years'}</span>
             </div>
           </div>
         </div>

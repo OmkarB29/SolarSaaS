@@ -6,6 +6,7 @@ import { analysisApiService } from '../services/analysisApiService';
 import { reportApiService } from '../services/reportApiService';
 import { downloadAnalysisReport } from '../services/reportService';
 import ForecastSection from '../components/forecast/ForecastSection';
+import { useLanguage } from '../context/LanguageContext';
 
 const formatNumber = (value, digits = 0) =>
   new Intl.NumberFormat('en-IN', {
@@ -21,6 +22,7 @@ const formatDate = (value) => {
 };
 
 const AnalysisHistory = () => {
+  const { t, language } = useLanguage();
   const [analyses, setAnalyses] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,7 +76,7 @@ const AnalysisHistory = () => {
 
     try {
       // Trigger PDF download
-      downloadAnalysisReport(analysis);
+      downloadAnalysisReport(analysis, null, language);
 
       // Save report record to backend
       const reportRes = await reportApiService.saveReport({
@@ -82,6 +84,7 @@ const AnalysisHistory = () => {
         reportType: 'PDF',
         analysisId: analysis.id,
         filePath: `/reports/solar_feasibility_${analysis.id}.pdf`,
+        language: language,
       });
 
       let notice = 'Report saved to database successfully!';

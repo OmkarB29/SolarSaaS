@@ -25,6 +25,7 @@ import { analysisApiService } from '../services/analysisApiService';
 import { reportApiService } from '../services/reportApiService';
 import { proposalApiService } from '../services/proposalApiService';
 import { downloadAnalysisReport } from '../services/reportService';
+import { useLanguage } from '../context/LanguageContext';
 
 const formatNumber = (value, digits = 0) =>
   new Intl.NumberFormat('en-IN', {
@@ -40,6 +41,7 @@ const formatDate = (value) => {
 };
 
 const MyAnalyses = () => {
+  const { t, language } = useLanguage();
   const [analyses, setAnalyses] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,7 +137,7 @@ const MyAnalyses = () => {
 
     try {
       // 1. Download PDF report
-      downloadAnalysisReport(analysis);
+      downloadAnalysisReport(analysis, null, language);
 
       // 2. Persist report record in backend
       const reportRes = await reportApiService.saveReport({
@@ -143,6 +145,7 @@ const MyAnalyses = () => {
         reportType: 'PDF',
         analysisId: analysis.id,
         filePath: `/reports/solar_feasibility_${analysis.id}.pdf`,
+        language: language,
       });
 
       let notice = `Report generated and saved for Analysis #${analysis.id}!`;
@@ -306,9 +309,9 @@ const MyAnalyses = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">My Analyses</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{t('myAnalysesTitle')}</h1>
           <p className="mt-1 text-slate-500">
-            View, duplicate, delete, and generate formal feasibility reports from your rooftop solar analyses
+            {t('myAnalysesSubtitle')}
           </p>
         </div>
         <Link
@@ -316,7 +319,7 @@ const MyAnalyses = () => {
           className="inline-flex items-center gap-2 rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold shadow-sm transition-all"
         >
           <Plus size={16} />
-          <span>New Analysis</span>
+          <span>{t('newAnalysis')}</span>
         </Link>
       </div>
 
@@ -336,16 +339,16 @@ const MyAnalyses = () => {
       {/* Main Analyses Table */}
       <Card className="p-0 overflow-hidden">
         <CardHeader 
-          title="All Saved Analyses" 
+          title={t('allSavedAnalyses')} 
           className="mb-0 p-6"
           action={
             <div className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
-              {analyses.length} Total Records
+              {analyses.length} {t('totalRecords')}
             </div>
           }
         />
         {isLoading ? (
-          <div className="p-8 text-center text-slate-500 text-sm">Loading your solar analyses...</div>
+          <div className="p-8 text-center text-slate-500 text-sm">{t('loadingAnalyses')}</div>
         ) : analyses.length ? (
           <Table columns={columns} data={analyses} />
         ) : (
@@ -353,15 +356,15 @@ const MyAnalyses = () => {
             <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
               <Layers size={24} />
             </div>
-            <h3 className="text-base font-semibold text-slate-800 mb-1">No Analyses Created Yet</h3>
+            <h3 className="text-base font-semibold text-slate-800 mb-1">{t('noAnalysesYet')}</h3>
             <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
-              Launch the map tool to outline a rooftop polygon and calculate solar potential.
+              {t('noAnalysesHint')}
             </p>
             <Link
               to="/map"
               className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 transition-all"
             >
-              <span>Run Analysis on Map</span>
+              <span>{t('runAnalysisOnMap')}</span>
             </Link>
           </div>
         )}
