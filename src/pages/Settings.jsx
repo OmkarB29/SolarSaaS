@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../context/useAuth';
+import { useLanguage } from '../context/LanguageContext';
 import { userSettingsService } from '../services/userSettingsService';
 
 const DEFAULT_SETTINGS = {
@@ -63,6 +64,7 @@ const AVATAR_COLORS = [
 
 const Settings = () => {
   const { user } = useAuth();
+  const { language, changeLanguage, supportedLanguages, t } = useLanguage();
   const [activeTab, setActiveTab] = useState('profile');
   const [settings, setSettings] = useState(() => {
     try {
@@ -123,7 +125,10 @@ const Settings = () => {
     localStorage.setItem('solarscope.settings', JSON.stringify(settings));
 
     try {
-      await userSettingsService.updateSettings({ autoEmailReports: settings.emailReports });
+      await userSettingsService.updateSettings({
+        autoEmailReports: settings.emailReports,
+        preferredLanguage: language,
+      });
     } catch (err) {
       console.warn('Could not persist settings in backend:', err);
     }
@@ -192,15 +197,15 @@ const Settings = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Platform Settings</h1>
-          <p className="text-slate-500 mt-1">Manage your account credentials, regional presets, and system preferences</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t('settingsTitle')}</h1>
+          <p className="text-slate-500 mt-1">{t('settingsSubtitle')}</p>
         </div>
         <button 
           onClick={handleSave}
           className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
         >
           <Save size={18} />
-          <span>Save Changes</span>
+          <span>{t('saveSettings')}</span>
         </button>
       </div>
 
@@ -322,6 +327,46 @@ const Settings = () => {
                 <h3 className="text-lg font-bold text-slate-800 border-b border-slate-200 pb-3 mb-6">User Preferences</h3>
                 
                 <div className="space-y-4">
+                  {/* Language Preference Card */}
+                  <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-primary-600" />
+                          <p className="font-semibold text-slate-900">{t('languageSelectLabel')}</p>
+                          <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                            Multilingual
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">{t('languageSelectDesc')}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-2">
+                      {supportedLanguages.map((lang) => {
+                        const isSelected = lang.code === language;
+                        return (
+                          <button
+                            key={lang.code}
+                            type="button"
+                            onClick={() => {
+                              changeLanguage(lang.code);
+                              setSettings((prev) => ({ ...prev, preferredLanguage: lang.code }));
+                            }}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-primary-500 bg-white text-primary-700 font-bold shadow-sm ring-2 ring-primary-500/20'
+                                : 'border-slate-200 bg-white/70 hover:bg-white text-slate-700 font-medium'
+                            }`}
+                          >
+                            <span className="text-xl mb-1">{lang.flag}</span>
+                            <span className="text-sm font-semibold">{lang.native}</span>
+                            <span className="text-[11px] text-slate-400">({lang.name})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
                     <div>
                       <p className="font-medium text-slate-800">Use Metric System (m²)</p>

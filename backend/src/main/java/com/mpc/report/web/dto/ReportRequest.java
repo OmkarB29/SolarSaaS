@@ -21,6 +21,9 @@ public class ReportRequest {
     @Size(max = 512)
     private String filePath;
 
+    @Size(max = 10)
+    private String language;
+
     public String getReportName() {
         return reportName;
     }
@@ -51,5 +54,13 @@ public class ReportRequest {
 
     public void setFilePath(String filePath) {
         this.filePath = filePath;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
     }
 }

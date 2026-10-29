@@ -82,8 +82,13 @@ public class EmailService {
     }
 
     public EmailHistory sendAnalysisReportEmail(User user, Report report, Analysis analysis) {
+        return sendAnalysisReportEmail(user, report, analysis, user.getPreferredLanguage());
+    }
+
+    public EmailHistory sendAnalysisReportEmail(User user, Report report, Analysis analysis, String language) {
+        String lang = normalizeLanguage(language != null ? language : user.getPreferredLanguage());
         String recipientEmail = user.getEmail();
-        String subject = "SolarSaaS Solar Analysis Report";
+        String subject = getLocalizedSubject(lang);
         Instant now = Instant.now();
 
         if (!isMailConfigured()) {
@@ -94,21 +99,21 @@ public class EmailService {
         }
 
         try {
-            byte[] pdfBytes = pdfGenerationService.generateAnalysisPdf(analysis);
-            String htmlBody = buildHtmlBody(user, analysis);
+            byte[] pdfBytes = pdfGenerationService.generateAnalysisPdf(analysis, lang);
+            String htmlBody = buildHtmlBody(user, analysis, lang);
 
             if (isResendConfigured()) {
-                log.info("[AUTO-EMAIL] Sending report to {} via Resend HTTPS API (Port 443)...", recipientEmail);
+                log.info("[AUTO-EMAIL] Sending localized ({}) report to {} via Resend HTTPS API (Port 443)...", lang, recipientEmail);
                 sendViaResendHttp(recipientEmail, subject, htmlBody, pdfBytes);
             } else if (isBrevoConfigured()) {
-                log.info("[AUTO-EMAIL] Sending report to {} via Brevo HTTPS API (Port 443)...", recipientEmail);
+                log.info("[AUTO-EMAIL] Sending localized ({}) report to {} via Brevo HTTPS API (Port 443)...", lang, recipientEmail);
                 sendViaBrevoHttp(recipientEmail, user.getUsername(), subject, htmlBody, pdfBytes);
             } else {
-                log.info("[AUTO-EMAIL] Sending report to {} via standard SMTP ({}:{})...", recipientEmail, mailHost, mailPort);
+                log.info("[AUTO-EMAIL] Sending localized ({}) report to {} via standard SMTP ({}:{})...", lang, recipientEmail, mailHost, mailPort);
                 sendViaSmtp(recipientEmail, subject, htmlBody, pdfBytes);
             }
 
-            log.info("[AUTO-EMAIL] Successfully delivered report email with PDF attachment to {}", recipientEmail);
+            log.info("[AUTO-EMAIL] Successfully delivered localized ({}) report email with PDF attachment to {}", lang, recipientEmail);
             EmailHistory history = new EmailHistory(user, report, recipientEmail, subject, "SENT", now, null);
             return emailHistoryRepository.save(history);
         } catch (Exception e) {
@@ -242,7 +247,27 @@ public class EmailService {
         return sender;
     }
 
-    private String buildHtmlBody(User user, Analysis analysis) {
+    private String normalizeLanguage(String lang) {
+        if (lang == null) return "en";
+        String lower = lang.toLowerCase().trim();
+        return switch (lower) {
+            case "hi", "hindi" -> "hi";
+            case "mr", "marathi" -> "mr";
+            case "kn", "kannada" -> "kn";
+            default -> "en";
+        };
+    }
+
+    private String getLocalizedSubject(String lang) {
+        return switch (lang) {
+            case "hi" -> "SolarSaaS सौर विश्लेषण रिपोर्ट - Rooftop Solar Feasibility";
+            case "mr" -> "SolarSaaS सौर विश्लेषण अहवाल - Rooftop Solar Feasibility";
+            case "kn" -> "SolarSaaS ಸೌರ ವಿಶ್ಲೇಷಣಾ ವರದಿ - Rooftop Solar Feasibility";
+            default -> "SolarSaaS Solar Analysis Report - Rooftop Feasibility";
+        };
+    }
+
+    private String buildHtmlBody(User user, Analysis analysis, String lang) {
         String name = user.getUsername() != null ? user.getUsername() : "Solar Energy Pro";
         String area = format(analysis.getRoofArea()) + " m² (Usable: " + format(analysis.getUsableArea()) + " m²)";
         String panels = format(analysis.getEstimatedPanels()) + " modules";
@@ -250,8 +275,100 @@ public class EmailService {
         String generation = format(analysis.getAnnualGeneration()) + " kWh / year (" + format(analysis.getMonthlyGeneration()) + " kWh/mo)";
         String savings = "INR " + format(analysis.getAnnualSavings()) + " / year";
         String roi = format(analysis.getRoi()) + "% (Payback ~" + format(analysis.getPaybackPeriod()) + " yrs)";
-        String weather = (analysis.getWeatherAdjustment() != null && analysis.getWeatherAdjustment() > 0 ? "+" : "") + format(analysis.getWeatherAdjustment()) + "% microclimate irradiance adjustment";
-        String battery = format(analysis.getBatteryRecommendation()) + " kWh LiFePO4 storage pack recommended";
+        String weather = (analysis.getWeatherAdjustment() != null && analysis.getWeatherAdjustment() > 0 ? "+" : "") + format(analysis.getWeatherAdjustment()) + "% microclimate factor";
+        String battery = format(analysis.getBatteryRecommendation()) + " kWh LiFePO4 battery pack";
+
+        // Localized strings
+        String headerTitle = switch (lang) {
+            case "hi" -> "SolarSaaS सौर विश्लेषण रिपोर्ट";
+            case "mr" -> "SolarSaaS सौर विश्लेषण अहवाल";
+            case "kn" -> "SolarSaaS ಸೌರ ವಿಶ್ಲೇಷಣಾ ವರದಿ";
+            default -> "SolarSaaS Solar Analysis Report";
+        };
+
+        String headerSubtitle = switch (lang) {
+            case "hi" -> "स्वचालित व्यवहार्यता और आर्थिक मूल्यांकन";
+            case "mr" -> "स्वयंचलित व्यवहार्यता आणि आर्थिक मूल्यांकन";
+            case "kn" -> "ಸ್ವಯಂಚಾಲಿತ ಕಾರ್ಯಸಾಧ್ಯತೆ ಮತ್ತು ಆರ್ಥಿಕ ಮೌಲ್ಯಮಾಪನ";
+            default -> "Automated Feasibility & Economic Appraisal";
+        };
+
+        String greeting = switch (lang) {
+            case "hi" -> "नमस्ते <strong>" + name + "</strong>,";
+            case "mr" -> "नमस्कार <strong>" + name + "</strong>,";
+            case "kn" -> "ನಮಸ್ಕಾರ <strong>" + name + "</strong>,";
+            default -> "Hello <strong>" + name + "</strong>,";
+        };
+
+        String intro = switch (lang) {
+            case "hi" -> "आपका तकनीकी रूफटॉप सौर मूल्यांकन तैयार है। विस्तृत PDF रिपोर्ट इस ईमेल के साथ संलग्न है।";
+            case "mr" -> "तुमचे तांत्रिक रूफटॉप सौर मूल्यांकन तयार आहे. तपशीलवार PDF अहवाल या ईमेलसोबत जोडलेला आहे.";
+            case "kn" -> "ನಿಮ್ಮ ತಾಂತ್ರಿಕ ರೂಫ್‌ಟಾಪ್ ಸೌರ ಮೌಲ್ಯಮಾಪನ ಸಿದ್ಧವಾಗಿದೆ. ವಿವರವಾದ PDF ವರದಿಯನ್ನು ಈ ಇಮೇಲ್‌ನೊಂದಿಗೆ ಲಗತ್ತಿಸಲಾಗಿದೆ.";
+            default -> "Your technical rooftop solar assessment is ready. A detailed PDF report is attached to this email.";
+        };
+
+        String lblSystemSize = switch (lang) {
+            case "hi" -> "अनुमानित सिस्टम क्षमता";
+            case "mr" -> "अंदाजे सिस्टम आकार";
+            case "kn" -> "ಅಂದಾಜು ಸಿಸ್ಟಮ್ ಗಾತ್ರ";
+            default -> "Estimated System Size";
+        };
+
+        String lblArea = switch (lang) {
+            case "hi" -> "छत का क्षेत्रफल";
+            case "mr" -> "छताचे क्षेत्रफळ";
+            case "kn" -> "ಮೇಲ್ಛಾವಣಿ ವಿಸ್ತೀರ್ಣ";
+            default -> "Rooftop Area";
+        };
+
+        String lblGen = switch (lang) {
+            case "hi" -> "वार्षिक सौर ऊर्जा उत्पादन";
+            case "mr" -> "वार्षिक सौर ऊर्जा निर्मिती";
+            case "kn" -> "ವಾರ್ಷಿಕ ಸೌರ ಉತ್ಪಾದನೆ";
+            default -> "Annual Solar Generation";
+        };
+
+        String lblSavings = switch (lang) {
+            case "hi" -> "अनुमानित वार्षिक बचत";
+            case "mr" -> "अंदाजे वार्षिक बचत";
+            case "kn" -> "ಅಂದಾಜು ವಾರ್ಷಿಕ ಉಳಿತಾಯ";
+            default -> "Estimated Annual Savings";
+        };
+
+        String lblRoi = switch (lang) {
+            case "hi" -> "निवेश पर प्रतिलाभ (ROI)";
+            case "mr" -> "गुंतवणुकीवरील परतावा (ROI)";
+            case "kn" -> "ಹೂಡಿಕೆಯ ಮೇಲಿನ ಆದಾಯ (ROI)";
+            default -> "Return on Investment (ROI)";
+        };
+
+        String lblWeather = switch (lang) {
+            case "hi" -> "सौर विकिरण कारक";
+            case "mr" -> "सौर विकिरण घटक";
+            case "kn" -> "ಸೌರ ವಿಕಿರಣ ಅಂಶ";
+            default -> "Solar Irradiance Factor";
+        };
+
+        String lblBattery = switch (lang) {
+            case "hi" -> "बैटरी स्टोरेज सलाह";
+            case "mr" -> "बॅटरी स्टोरेज सल्ला";
+            case "kn" -> "ಬ್ಯಾಟರಿ ಸಂಗ್ರಹಣೆ ಸಲಹೆ";
+            default -> "Battery Storage Advice";
+        };
+
+        String outro = switch (lang) {
+            case "hi" -> "इंटरएक्टिव सोलर रे ट्रेसिंग, 3D शैडो, पैनल लेआउट देखने या औपचारिक ईपीसी प्रस्ताव प्रस्तुत करने के लिए अपने SolarSaaS डैशबोर्ड में लॉगिन करें।";
+            case "mr" -> "परस्परसंवादी सौर रे ट्रेसिंग, 3D सावल्या, पॅनेल लेआउट पाहण्यासाठी किंवा औपचारिक ईपीसी प्रस्ताव सादर करण्यासाठी आपल्या SolarSaaS डॅशबोर्डवर साइन इन करा.";
+            case "kn" -> "ಸಂವಾದಾತ್ಮಕ ಸೌರ ಕಿರಣ ಟ್ರೇಸಿಂಗ್, 3D ನೆರಳುಗಳು, ಪ್ಯಾನಲ್ ಲೇಔಟ್‌ಗಳನ್ನು ವೀಕ್ಷಿಸಲು ಅಥವಾ ಔಪಚಾರಿಕ ಇಪಿಸಿ ಪ್ರಸ್ತಾವನೆಗಳನ್ನು ಸಲ್ಲಿಸಲು ನಿಮ್ಮ SolarSaaS ಡ್ಯಾಶ್‌ಬೋರ್ಡ್‌ಗೆ ಸೈನ್ ಇನ್ ಮಾಡಿ.";
+            default -> "To view interactive solar ray tracing, 3D azimuth shadows, panel layouts, or submit formal EPC installation proposals, sign in to your SolarSaaS dashboard.";
+        };
+
+        String footer = switch (lang) {
+            case "hi" -> "&copy; 2026 SolarSaaS प्लेटफॉर्म। सभी के लिए स्वच्छ ऊर्जा तकनीक।";
+            case "mr" -> "&copy; 2026 SolarSaaS प्लॅटफॉर्म. प्रत्येकासाठी स्वच्छ ऊर्जा तंत्रज्ञान.";
+            case "kn" -> "&copy; 2026 SolarSaaS ಪ್ಲಾಟ್‌ಫಾರ್ಮ್. ಎಲ್ಲರಿಗೂ ಸ್ವಚ್ಛ ಇಂಧನ ತಂತ್ರಜ್ಞಾನ.";
+            default -> "&copy; 2026 SolarSaaS Platform. Clean Energy Technology for Everyone.";
+        };
 
         return """
             <!DOCTYPE html>
@@ -274,55 +391,65 @@ public class EmailService {
             <body>
               <div class="container">
                 <div class="header">
-                  <h1>SolarSaaS Solar Analysis Report</h1>
-                  <p style="margin: 4px 0 0; font-size: 13px; color: #94a3b8;">Automated Feasibility & Economic Appraisal</p>
+                  <h1>%s</h1>
+                  <p style="margin: 4px 0 0; font-size: 13px; color: #94a3b8;">%s</p>
                 </div>
                 <div class="content">
-                  <p>Hello <strong>%s</strong>,</p>
-                  <p>Your technical rooftop solar assessment is ready. A detailed PDF report is attached to this email.</p>
+                  <p>%s</p>
+                  <p>%s</p>
                   
                   <div class="metric-box">
                     <div class="metric-row">
-                      <span class="metric-label">Estimated System Size</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s (%s)</span>
                     </div>
                     <div class="metric-row">
-                      <span class="metric-label">Rooftop Area</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s</span>
                     </div>
                     <div class="metric-row">
-                      <span class="metric-label">Annual Solar Generation</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s</span>
                     </div>
                     <div class="metric-row">
-                      <span class="metric-label">Estimated Annual Savings</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s</span>
                     </div>
                     <div class="metric-row">
-                      <span class="metric-label">Return on Investment (ROI)</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s</span>
                     </div>
                     <div class="metric-row">
-                      <span class="metric-label">Solar Irradiance Factor</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s</span>
                     </div>
                     <div class="metric-row" style="border-bottom: none;">
-                      <span class="metric-label">Battery Storage Advice</span>
+                      <span class="metric-label">%s</span>
                       <span class="metric-val">%s</span>
                     </div>
                   </div>
 
                   <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
-                    To view interactive solar ray tracing, 3D azimuth shadows, panel layouts, or submit formal EPC installation proposals, sign in to your SolarSaaS dashboard.
+                    %s
                   </p>
                 </div>
                 <div class="footer">
-                  <p>&copy; 2026 SolarSaaS Platform. Clean Energy Technology for Everyone.</p>
+                  <p>%s</p>
                 </div>
               </div>
             </body>
             </html>
-            """.formatted(name, systemSize, panels, area, generation, savings, roi, weather, battery);
+            """.formatted(
+                headerTitle, headerSubtitle, greeting, intro,
+                lblSystemSize, systemSize, panels,
+                lblArea, area,
+                lblGen, generation,
+                lblSavings, savings,
+                lblRoi, roi,
+                lblWeather, weather,
+                lblBattery, battery,
+                outro, footer
+        );
     }
 
     private String format(Double value) {

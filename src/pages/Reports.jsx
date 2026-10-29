@@ -8,6 +8,7 @@ import { analysisApiService } from '../services/analysisApiService';
 import { downloadAnalysisReport, downloadSolarPotentialReport } from '../services/reportService';
 import { solarApiService } from '../services/solarApiService';
 import { userSettingsService } from '../services/userSettingsService';
+import { useLanguage } from '../context/LanguageContext';
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -18,6 +19,7 @@ const formatDate = (value) => {
 };
 
 const Reports = () => {
+  const { t, language } = useLanguage();
   const [reports, setReports] = useState([]);
   const [solarHistory, setSolarHistory] = useState([]);
   const [emailHistory, setEmailHistory] = useState([]);
@@ -90,7 +92,7 @@ const Reports = () => {
 
     try {
       const analysis = await analysisApiService.getAnalysisById(report.analysisId);
-      downloadAnalysisReport(analysis);
+      downloadAnalysisReport(analysis, null, language);
       setSuccessNotice(`PDF for "${report.reportName}" downloaded successfully.`);
       setTimeout(() => setSuccessNotice(''), 4000);
     } catch (downloadError) {
@@ -379,8 +381,8 @@ const Reports = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Reports & Dispatch History</h1>
-        <p className="mt-1 text-slate-500">Manage your generated solar analysis reports and automated email deliveries</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t('reportsTitle')}</h1>
+        <p className="mt-1 text-slate-500">{t('reportsSubtitle')}</p>
       </div>
 
       {error && (

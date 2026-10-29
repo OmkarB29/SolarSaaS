@@ -14,32 +14,33 @@ import {
   Box,
 } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
+import { useLanguage } from '../context/LanguageContext';
 
 const Sidebar = () => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = user?.role === 'ROLE_ADMIN';
-  const userRole = isAdmin ? 'ADMIN' : 'USER';
 
   const navItems = [
-    { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-    { to: '/map', icon: <MapIcon size={20} />, label: 'Map Selection' },
-    { to: '/analysis', icon: <BarChart3 size={20} />, label: 'Analysis' },
-    { to: '/solar-potential', icon: <Sun size={20} />, label: 'Solar Potential' },
-    { to: '/panel-optimizer', icon: <Cpu size={20} />, label: 'AI Panel Optimizer' },
-    { to: '/model-3d', icon: <Box size={20} />, label: '3D Model View', badge: 'NEW' },
+    { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: t('dashboard') },
+    { to: '/map', icon: <MapIcon size={20} />, label: t('mapSelection') },
+    { to: '/analysis', icon: <BarChart3 size={20} />, label: t('analysis') },
+    { to: '/solar-potential', icon: <Sun size={20} />, label: t('solarPotential') },
+    { to: '/panel-optimizer', icon: <Cpu size={20} />, label: t('panelOptimizer') },
+    { to: '/model-3d', icon: <Box size={20} />, label: t('model3D'), badge: 'NEW' },
 
-    { to: '/my-analyses', icon: <Layers size={20} />, label: 'History' },
-    { to: '/my-proposals', icon: <FileCheck size={20} />, label: 'My Proposals' },
-    { to: '/reports', icon: <FileText size={20} />, label: 'Reports' },
-    { to: '/settings', icon: <Settings size={20} />, label: 'Settings' },
+    { to: '/my-analyses', icon: <Layers size={20} />, label: t('history') },
+    { to: '/my-proposals', icon: <FileCheck size={20} />, label: t('myProposals') },
+    { to: '/reports', icon: <FileText size={20} />, label: t('reports') },
+    { to: '/settings', icon: <Settings size={20} />, label: t('settings') },
   ];
 
   const adminItems = [
-    { to: '/admin', icon: <ShieldCheck size={20} />, label: 'Admin Dashboard' },
-    { to: '/admin/users', icon: <ShieldCheck size={20} />, label: 'Admin Users' },
-    { to: '/admin/analyses', icon: <BarChart3 size={20} />, label: 'Admin Analyses' },
-    { to: '/admin/reports', icon: <FileText size={20} />, label: 'Admin Reports' },
-    { to: '/admin/analytics', icon: <BarChart3 size={20} />, label: 'Admin Analytics' },
+    { to: '/admin', icon: <ShieldCheck size={20} />, label: t('adminDashboard') },
+    { to: '/admin/users', icon: <ShieldCheck size={20} />, label: t('adminUsers') },
+    { to: '/admin/analyses', icon: <BarChart3 size={20} />, label: t('adminAnalyses') },
+    { to: '/admin/reports', icon: <FileText size={20} />, label: t('adminReports') },
+    { to: '/admin/analytics', icon: <BarChart3 size={20} />, label: t('adminAnalytics') },
   ];
 
   return (
@@ -57,7 +58,7 @@ const Sidebar = () => {
           isAdmin ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
         }`}>
           <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-          Role: {isAdmin ? 'Administrator' : 'Standard User'}
+          Role: {isAdmin ? t('roleAdmin') : t('roleUser')}
         </div>
       </div>
 
@@ -84,7 +85,7 @@ const Sidebar = () => {
 
         <div className="pt-5 pb-2">
           <div className="px-4 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Admin Portal
+            {t('adminPortal')}
           </div>
         </div>
 
@@ -112,7 +113,7 @@ const Sidebar = () => {
           <div className="mx-2 p-3 rounded-xl bg-slate-800/60 border border-slate-700/50 text-xs text-slate-400">
             <div className="flex items-center gap-1.5 font-semibold text-slate-300 mb-1">
               <ShieldCheck size={14} className="text-purple-400" />
-              Admin Portal
+              {t('adminPortal')}
             </div>
             <p className="text-[11px] leading-relaxed text-slate-400">
               Sign in as <span className="text-purple-300 font-mono">admin@solarsaas.com</span> to manage users, analyses, and platform analytics.

@@ -5,6 +5,7 @@ public class UserSettingsDTO {
     private Boolean autoEmailReports;
     private String email;
     private String username;
+    private String preferredLanguage;
 
     public UserSettingsDTO() {
     }
@@ -13,6 +14,14 @@ public class UserSettingsDTO {
         this.autoEmailReports = autoEmailReports;
         this.email = email;
         this.username = username;
+        this.preferredLanguage = "en";
+    }
+
+    public UserSettingsDTO(Boolean autoEmailReports, String email, String username, String preferredLanguage) {
+        this.autoEmailReports = autoEmailReports;
+        this.email = email;
+        this.username = username;
+        this.preferredLanguage = preferredLanguage;
     }
 
     public Boolean getAutoEmailReports() {
@@ -37,5 +46,13 @@ public class UserSettingsDTO {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public String getPreferredLanguage() {
+        return (preferredLanguage != null && !preferredLanguage.isBlank()) ? preferredLanguage : "en";
+    }
+
+    public void setPreferredLanguage(String preferredLanguage) {
+        this.preferredLanguage = preferredLanguage;
     }
 }

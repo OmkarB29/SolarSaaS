@@ -44,6 +44,9 @@ public class User {
     @Column(name = "auto_email_reports", nullable = false)
     private Boolean autoEmailReports = true;
 
+    @Column(name = "preferred_language", length = 10)
+    private String preferredLanguage = "en";
+
     @com.fasterxml.jackson.annotation.JsonIgnore
     @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
     private List<Report> reports = new ArrayList<>();
@@ -160,6 +163,14 @@ public class User {
         this.autoEmailReports = autoEmailReports != null && autoEmailReports;
     }
 
+    public String getPreferredLanguage() {
+        return (preferredLanguage != null && !preferredLanguage.isBlank()) ? preferredLanguage : "en";
+    }
+
+    public void setPreferredLanguage(String preferredLanguage) {
+        this.preferredLanguage = preferredLanguage != null ? preferredLanguage.toLowerCase().trim() : "en";
+    }
+
     public List<com.mpc.paneloptimizer.domain.PanelLayout> getPanelLayouts() {
         return panelLayouts;
     }
@@ -223,4 +234,3 @@ public class User {
         updatedAt = Instant.now();
     }
 }
-

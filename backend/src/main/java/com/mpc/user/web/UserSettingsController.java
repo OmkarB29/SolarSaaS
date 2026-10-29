@@ -25,7 +25,8 @@ public class UserSettingsController {
         return ResponseEntity.ok(new UserSettingsDTO(
                 user.getAutoEmailReports(),
                 user.getEmail(),
-                user.getUsername()
+                user.getUsername(),
+                user.getPreferredLanguage()
         ));
     }
 
@@ -35,12 +36,17 @@ public class UserSettingsController {
         User user = getUser(authentication.getName());
         if (request.getAutoEmailReports() != null) {
             user.setAutoEmailReports(request.getAutoEmailReports());
-            userRepository.save(user);
         }
+        if (request.getPreferredLanguage() != null && !request.getPreferredLanguage().isBlank()) {
+            user.setPreferredLanguage(request.getPreferredLanguage());
+        }
+        userRepository.save(user);
+
         return ResponseEntity.ok(new UserSettingsDTO(
                 user.getAutoEmailReports(),
                 user.getEmail(),
-                user.getUsername()
+                user.getUsername(),
+                user.getPreferredLanguage()
         ));
     }
 

@@ -5,7 +5,98 @@ const formatNumber = (value, maximumFractionDigits = 0) =>
 
 const formatCurrency = (value) => `INR ${formatNumber(value)}`;
 
-const getReportRows = (analysis) => {
+const getReportLabel = (key, lang = 'en') => {
+  const labels = {
+    date: {
+      en: 'Generated Date',
+      hi: 'Generated Date (निर्माण तिथि)',
+      mr: 'Generated Date (निर्मिती दिनांक)',
+      kn: 'Generated Date (ರಚಿಸಲಾದ ದಿನಾಂಕ)',
+    },
+    location: {
+      en: 'Location',
+      hi: 'Location (स्थान)',
+      mr: 'Location (स्थान / ठिकाण)',
+      kn: 'Location (ಸ್ಥಳ)',
+    },
+    roofArea: {
+      en: 'Roof Area',
+      hi: 'Roof Area (छत का क्षेत्रफल)',
+      mr: 'Roof Area (छताचे क्षेत्रफळ)',
+      kn: 'Roof Area (ಛಾವಣಿ ವಿಸ್ತೀರ್ಣ)',
+    },
+    usableArea: {
+      en: 'Usable Area',
+      hi: 'Usable Area (उपयोगी क्षेत्रफल)',
+      mr: 'Usable Area (वापरण्यायोग्य क्षेत्रफळ)',
+      kn: 'Usable Area (ಬಳಸಬಹುದಾದ ವಿಸ್ತೀರ್ಣ)',
+    },
+    systemSize: {
+      en: 'System Size',
+      hi: 'System Size (सिस्टम क्षमता)',
+      mr: 'System Size (प्रणाली क्षमता)',
+      kn: 'System Size (ಸಿಸ್ಟಮ್ ಸಾಮರ್ಥ್ಯ)',
+    },
+    panels: {
+      en: 'Estimated Panel Count',
+      hi: 'Panel Count (पैनल संख्या)',
+      mr: 'Panel Count (पॅनेल संख्या)',
+      kn: 'Panel Count (ಫಲಕಗಳ ಸಂಖ್ಯೆ)',
+    },
+    monthlyGen: {
+      en: 'Estimated Monthly Energy',
+      hi: 'Monthly Energy (मासिक ऊर्जा)',
+      mr: 'Monthly Energy (मासिक ऊर्जा निर्मिती)',
+      kn: 'Monthly Energy (ಮಾಸಿಕ ಶಕ್ತಿ)',
+    },
+    annualGen: {
+      en: 'Estimated Annual Energy',
+      hi: 'Annual Energy (वार्षिक ऊर्जा)',
+      mr: 'Annual Energy (वार्षिक ऊर्जा निर्मिती)',
+      kn: 'Annual Energy (ವಾರ್ಷಿಕ ಶಕ್ತಿ)',
+    },
+    battery: {
+      en: 'Recommended Battery Storage',
+      hi: 'Battery Storage (बैटरी बैकअप)',
+      mr: 'Battery Storage (बॅटरी बॅकअप)',
+      kn: 'Battery Storage (ಬ್ಯಾಟರಿ ಸಂಗ್ರಹಣೆ)',
+    },
+    cost: {
+      en: 'Installation Cost',
+      hi: 'Installation Cost (स्थापना लागत)',
+      mr: 'Installation Cost (प्रकल्प खर्च)',
+      kn: 'Installation Cost (ಅನುಸ್ಥಾಪನಾ ವೆಚ್ಚ)',
+    },
+    roi: {
+      en: 'Projected ROI',
+      hi: 'Projected ROI (प्रतिलाभ दर)',
+      mr: 'Projected ROI (परतावा दर)',
+      kn: 'Projected ROI (ಆದಾಯ ದರ)',
+    },
+    payback: {
+      en: 'Payback Period',
+      hi: 'Payback Period (लागत वसूली समय)',
+      mr: 'Payback Period (परतफेड कालावधी)',
+      kn: 'Payback Period (ಮರುಪಾವತಿ ಅವಧಿ)',
+    },
+    savings: {
+      en: 'Estimated Savings',
+      hi: 'Annual Savings (वार्षिक बचत)',
+      mr: 'Annual Savings (वार्षिक बचत)',
+      kn: 'Annual Savings (ವಾರ್ಷಿಕ ಉಳಿತಾಯ)',
+    },
+    co2: {
+      en: 'CO2 Reduction',
+      hi: 'CO2 Reduction (कार्बन उत्सर्जन घट)',
+      mr: 'CO2 Reduction (कार्बन उत्सर्जन घट)',
+      kn: 'CO2 Reduction (ಕಾರ್ಬನ್ ಕಡಿತ)',
+    },
+  };
+  return labels[key]?.[lang] || labels[key]?.en || key;
+};
+
+const getReportRows = (analysis, language = null) => {
+  const lang = language || localStorage.getItem('solarscope.language') || 'en';
   const panelCount = analysis.panels || analysis.estimatedPanels || analysis.panelCount || 0;
   const usable = analysis.usableArea || (panelCount * 2.5);
   const sysSize = analysis.systemSize || Number((panelCount * 0.4).toFixed(1));
@@ -18,17 +109,17 @@ const getReportRows = (analysis) => {
   );
 
   return [
-    ['Generated Date', new Date().toLocaleDateString('en-IN', {
+    [getReportLabel('date', lang), new Date().toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'long',
       year: 'numeric',
     })],
-    ['Location', analysis.location || analysis.locationName || 'Rooftop Site'],
-    ['Roof Area', `${formatNumber(analysis.roofArea)} m2`],
-    ['Usable Area', `${formatNumber(usable, 1)} m2`],
-    ['System Size', `${formatNumber(sysSize, 1)} kWp`],
-    ['Estimated Panel Count', `${formatNumber(panelCount)} modules`],
-    ['Estimated Monthly Energy', `${formatNumber(analysis.monthlyGeneration || Math.round(annualGen / 12))} kWh`],
+    [getReportLabel('location', lang), analysis.location || analysis.locationName || 'Rooftop Site'],
+    [getReportLabel('roofArea', lang), `${formatNumber(analysis.roofArea)} m2`],
+    [getReportLabel('usableArea', lang), `${formatNumber(usable, 1)} m2`],
+    [getReportLabel('systemSize', lang), `${formatNumber(sysSize, 1)} kWp`],
+    [getReportLabel('panels', lang), `${formatNumber(panelCount)} modules`],
+    [getReportLabel('monthlyGen', lang), `${formatNumber(analysis.monthlyGeneration || Math.round(annualGen / 12))} kWh`],
     ...(analysis.weatherAdjustment || analysis.weatherAdjustmentPercent
       ? [['Weather Impact Factor', `${(analysis.weatherAdjustment || analysis.weatherAdjustmentPercent) > 0 ? '+' : ''}${formatNumber(analysis.weatherAdjustment || analysis.weatherAdjustmentPercent)}%`]]
       : []),
@@ -38,13 +129,13 @@ const getReportRows = (analysis) => {
           ['Cloud Adjustment', `${analysis.weatherAdjustmentPercent > 0 ? '+' : ''}${formatNumber(analysis.weatherAdjustmentPercent)}%`],
         ]
       : []),
-    ['Estimated Annual Energy', `${formatNumber(annualGen)} kWh`],
-    ['Recommended Battery Storage', `${formatNumber(batteryRec)} kWh (LFP)`],
-    ['Installation Cost', formatCurrency(cost)],
-    ['Projected ROI', `${formatNumber(analysis.roi, 1)}%`],
-    ['Payback Period', `${formatNumber(payback, 1)} years`],
-    ['Estimated Savings', `${formatCurrency(savings)} per year`],
-    ['CO2 Reduction', `${formatNumber(analysis.co2Reduction || Math.round(annualGen * 0.82))} kg per year`],
+    [getReportLabel('annualGen', lang), `${formatNumber(annualGen)} kWh`],
+    [getReportLabel('battery', lang), `${formatNumber(batteryRec)} kWh (LFP)`],
+    [getReportLabel('cost', lang), formatCurrency(cost)],
+    [getReportLabel('roi', lang), `${formatNumber(analysis.roi, 1)}%`],
+    [getReportLabel('payback', lang), `${formatNumber(payback, 1)} years`],
+    [getReportLabel('savings', lang), `${formatCurrency(savings)} per year`],
+    [getReportLabel('co2', lang), `${formatNumber(analysis.co2Reduction || Math.round(annualGen * 0.82))} kg per year`],
   ];
 };
 
@@ -56,18 +147,26 @@ export const getLatestAnalysis = () => {
   }
 };
 
-export const downloadAnalysisReport = (analysis, forecastData = null) => {
+export const downloadAnalysisReport = (analysis, forecastData = null, language = null) => {
+  const lang = language || localStorage.getItem('solarscope.language') || 'en';
   const document = new jsPDF();
   const pageWidth = document.internal.pageSize.getWidth();
   const margin = 20;
   const labelWidth = 72;
   let y = 28;
 
+  const titleByLang = {
+    hi: 'SolarScope Rooftop Solar Analysis Report (सौर अहवाल)',
+    mr: 'SolarScope Rooftop Solar Analysis Report (सौर अहवाल)',
+    kn: 'SolarScope Rooftop Solar Analysis Report (ಸೌರ ವರದಿ)',
+    en: 'SolarScope Rooftop Solar Analysis Report',
+  };
+
   // PAGE 1: Rooftop Solar Analysis Report
   document.setTextColor(15, 23, 42);
   document.setFont('helvetica', 'bold');
-  document.setFontSize(18);
-  document.text('SolarScope Rooftop Solar Analysis Report', margin, y);
+  document.setFontSize(17);
+  document.text(titleByLang[lang] || titleByLang.en, margin, y);
 
   y += 8;
   document.setDrawColor(245, 158, 11);
@@ -75,7 +174,7 @@ export const downloadAnalysisReport = (analysis, forecastData = null) => {
   document.line(margin, y, pageWidth - margin, y);
 
   y += 14;
-  getReportRows(analysis).forEach(([label, value], index) => {
+  getReportRows(analysis, lang).forEach(([label, value], index) => {
     if (index % 2 === 0) {
       document.setFillColor(248, 250, 252);
       document.rect(margin, y - 6, pageWidth - margin * 2, 11, 'F');
