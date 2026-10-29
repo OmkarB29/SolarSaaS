@@ -35,10 +35,16 @@ const getAuthHeaders = () => {
 
 export const reportApiService = {
   async saveReport(report) {
+    const currentLang = localStorage.getItem('solarscope.language') || 'en';
+    const payload = {
+      ...report,
+      language: report.language || currentLang,
+    };
+
     const response = await fetch(apiUrl('/api/reports'), {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(report),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -83,8 +89,10 @@ export const reportApiService = {
     }
   },
 
-  async resendEmail(id) {
-    const response = await fetch(apiUrl(`/api/reports/${id}/resend-email`), {
+  async resendEmail(id, language = null) {
+    const currentLang = language || localStorage.getItem('solarscope.language') || 'en';
+    const url = apiUrl(`/api/reports/${id}/resend-email?lang=${encodeURIComponent(currentLang)}`);
+    const response = await fetch(url, {
       method: 'POST',
       headers: getAuthHeaders(),
     });

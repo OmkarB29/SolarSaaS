@@ -90,11 +90,17 @@ public class ReportService {
 
     @Transactional
     public ReportResponse resendReportEmail(String email, Long id) {
+        return resendReportEmail(email, id, null);
+    }
+
+    @Transactional
+    public ReportResponse resendReportEmail(String email, Long id, String lang) {
         User user = getUser(email);
         Report report = reportRepository.findByIdAndUserId(id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Report not found"));
 
-        var history = emailService.sendAnalysisReportEmail(user, report, report.getAnalysis(), user.getPreferredLanguage());
+        String language = (lang != null && !lang.isBlank()) ? lang : user.getPreferredLanguage();
+        var history = emailService.sendAnalysisReportEmail(user, report, report.getAnalysis(), language);
         return toResponse(report, history.getStatus(), history.getErrorMessage());
     }
 

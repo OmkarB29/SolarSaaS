@@ -35,6 +35,30 @@ const TRANSLATIONS = {
     language: 'Language',
     preferredLanguage: 'Preferred Language',
 
+    // Dashboard
+    projectOverview: 'Project Overview',
+    projectSubtitle: 'Clean Energy Photovoltaic Feasibility & Financial Analytics',
+    generateReport: 'Generate Report',
+    totalAnalyses: 'Total Analyses',
+    savedRooftopModels: 'Saved rooftop models',
+    totalProposals: 'Total Proposals',
+    commercialProposals: 'Commercial proposals',
+    reportsGenerated: 'Reports Generated',
+    pdfFeasibilityDocs: 'PDF feasibility docs',
+    emailsSent: 'Emails Sent',
+    dispatchedToInbox: 'Dispatched to inbox',
+    estMonthlyEnergy: 'Est. Monthly Energy',
+    installationCost: 'Installation Cost',
+    projectedRoi: 'Projected ROI',
+    paybackPeriod: 'Payback Period',
+    co2Reduction: 'CO₂ Reduction',
+    monthlyEnergyGeneration: 'Monthly Energy Generation',
+    savingsOverTime: 'Savings Over Time',
+    roiGrowthTrajectory: 'ROI Growth Trajectory',
+    runAnalysisFirst: 'Please run an analysis first.',
+    weatherForecast: '10-Day Solar Energy & Weather Forecast',
+    batteryPlanner: 'Battery Storage Planner & Deficit Prediction',
+
     // Reports page
     reportsTitle: 'Reports & Solar Assessments',
     reportsSubtitle: 'Export, download, and email official feasibility reports and financial projections',
@@ -86,9 +110,7 @@ const TRANSLATIONS = {
     annualGeneration: 'Annual Generation',
     annualSavings: 'Annual Savings',
     roi: 'Projected ROI',
-    paybackPeriod: 'Payback Period',
     batteryStorage: 'Recommended Battery',
-    co2Reduction: 'CO2 Reduction',
   },
 
   hi: {
@@ -116,6 +138,30 @@ const TRANSLATIONS = {
     roleUser: 'मानक उपयोगकर्ता',
     language: 'भाषा',
     preferredLanguage: 'पसंदीदा भाषा',
+
+    // Dashboard
+    projectOverview: 'प्रोजेक्ट अवलोकन',
+    projectSubtitle: 'स्वच्छ ऊर्जा फोटोवोल्टिक व्यवहार्यता और वित्तीय विश्लेषण',
+    generateReport: 'रिपोर्ट तैयार करें',
+    totalAnalyses: 'कुल विश्लेषण',
+    savedRooftopModels: 'सहेजे गए रूफटॉप मॉडल',
+    totalProposals: 'कुल प्रस्ताव',
+    commercialProposals: 'व्यावसायिक प्रस्ताव',
+    reportsGenerated: 'तैयार की गई रिपोर्ट',
+    pdfFeasibilityDocs: 'PDF व्यवहार्यता दस्तावेज',
+    emailsSent: 'भेजे गए ईमेल',
+    dispatchedToInbox: 'इनबॉक्स में प्रेषित',
+    estMonthlyEnergy: 'अनुमानित मासिक ऊर्जा',
+    installationCost: 'स्थापना लागत',
+    projectedRoi: 'अनुमानित प्रतिलाभ (ROI)',
+    paybackPeriod: 'लागत वसूली समय',
+    co2Reduction: 'CO₂ उत्सर्जन कमी',
+    monthlyEnergyGeneration: 'मासिक सौर ऊर्जा उत्पादन',
+    savingsOverTime: 'समय के साथ संचयी बचत',
+    roiGrowthTrajectory: 'ROI विकास प्रक्षेपवक्र',
+    runAnalysisFirst: 'कृपया पहले एक विश्लेषण चलाएं।',
+    weatherForecast: '10-दिवसीय सौर ऊर्जा और मौसम का पूर्वानुमान',
+    batteryPlanner: 'बैटरी स्टोरेज योजना और कमी शमन',
 
     // Reports page
     reportsTitle: 'रिपोर्ट और सौर मूल्यांकन',
@@ -168,9 +214,7 @@ const TRANSLATIONS = {
     annualGeneration: 'वार्षिक सौर ऊर्जा',
     annualSavings: 'वार्षिक बचत',
     roi: 'अनुमानित प्रतिलाभ (ROI)',
-    paybackPeriod: 'लागत वसूली समय',
     batteryStorage: 'अनुशंसित बैटरी बैकअप',
-    co2Reduction: 'CO2 उत्सर्जन कमी',
   },
 
   mr: {
@@ -198,6 +242,30 @@ const TRANSLATIONS = {
     roleUser: 'नियमित वापरकर्ता',
     language: 'भाषा',
     preferredLanguage: 'पसंतीची भाषा',
+
+    // Dashboard
+    projectOverview: 'प्रकल्प आढावा',
+    projectSubtitle: 'स्वच्छ ऊर्जा फोटोव्होल्टेइक व्यवहार्यता आणि आर्थिक विश्लेषण',
+    generateReport: 'अहवाल तयार करा',
+    totalAnalyses: 'एकूण विश्लेषणे',
+    savedRooftopModels: 'जतन केलेले छताचे मॉडेल',
+    totalProposals: 'एकूण व्यावसायिक प्रस्ताव',
+    commercialProposals: 'व्यावसायिक प्रस्ताव',
+    reportsGenerated: 'तयार केलेले अहवाल',
+    pdfFeasibilityDocs: 'PDF व्यवहार्यता दस्तऐवज',
+    emailsSent: 'पाठवलेले ईमेल',
+    dispatchedToInbox: 'इनबॉक्समध्ये पाठवले',
+    estMonthlyEnergy: 'अंदाजे मासिक ऊर्जा',
+    installationCost: 'एकूण प्रकल्प खर्च',
+    projectedRoi: 'अंदाजे परतावा (ROI)',
+    paybackPeriod: 'परतफेड कालावधी',
+    co2Reduction: 'कार्बन उत्सर्जन घट',
+    monthlyEnergyGeneration: 'मासिक सौर ऊर्जा निर्मिती',
+    savingsOverTime: 'कालांतराने होणारी बचत',
+    roiGrowthTrajectory: 'ROI वाढीचा मार्ग',
+    runAnalysisFirst: 'कृपया प्रथम एक विश्लेषण चालवा.',
+    weatherForecast: '१० दिवसांचा सौर ऊर्जा आणि हवामान अंदाज',
+    batteryPlanner: 'बॅटरी स्टोरेज नियोजन आणि तूट अंदाज',
 
     // Reports page
     reportsTitle: 'अहवाल आणि सौर मूल्यांकन',
@@ -250,9 +318,7 @@ const TRANSLATIONS = {
     annualGeneration: 'वार्षिक सौर ऊर्जा निर्मिती',
     annualSavings: 'वार्षिक वीज बचत',
     roi: 'गुंतवणुकीवरील परतावा (ROI)',
-    paybackPeriod: 'परतफेड कालावधी',
     batteryStorage: 'शिफारस केलेली बॅटरी',
-    co2Reduction: 'कार्बन उत्सर्जन घट',
   },
 
   kn: {
@@ -280,6 +346,30 @@ const TRANSLATIONS = {
     roleUser: 'ಪ್ರಮಾಣಿತ ಬಳಕೆದಾರ',
     language: 'ಭಾಷೆ',
     preferredLanguage: 'ಆದ್ಯತೆಯ ಭಾಷೆ',
+
+    // Dashboard
+    projectOverview: 'ಯೋಜನೆಯ ಅವಲೋಕನ',
+    projectSubtitle: 'ಸ್ವಚ್ಛ ಇಂಧನ ದ್ಯುತಿವಿದ್ಯುಜ್ಜನಕ ಕಾರ್ಯಸಾಧ್ಯತೆ ಮತ್ತು ಹಣಕಾಸು ವಿಶ್ಲೇಷಣೆ',
+    generateReport: 'ವರದಿ ರಚಿಸಿ',
+    totalAnalyses: 'ಒಟ್ಟು ವಿಶ್ಲೇಷಣೆಗಳು',
+    savedRooftopModels: 'ಉಳಿಸಲಾದ ಮಾದರಿಗಳು',
+    totalProposals: 'ಒಟ್ಟು ವಾಣಿಜ್ಯ ಪ್ರಸ್ತಾವನೆಗಳು',
+    commercialProposals: 'ವಾಣಿಜ್ಯ ಪ್ರಸ್ತಾವನೆಗಳು',
+    reportsGenerated: 'ರಚಿಸಲಾದ ವರದಿಗಳು',
+    pdfFeasibilityDocs: 'PDF ಕಾರ್ಯಸಾಧ್ಯತಾ ದಾಖಲೆಗಳು',
+    emailsSent: 'ಕಳುಹಿಸಲಾದ ಇಮೇಲ್‌ಗಳು',
+    dispatchedToInbox: 'ಇನ್‌ಬಾಕ್ಸ್‌ಗೆ ಕಳುಹಿಸಲಾಗಿದೆ',
+    estMonthlyEnergy: 'ಅಂದಾಜು ಮಾಸಿಕ ಶಕ್ತಿ',
+    installationCost: 'ಅನುಸ್ಥಾಪನಾ ವೆಚ್ಚ',
+    projectedRoi: 'ನಿರೀಕ್ಷಿತ ಆದಾಯ (ROI)',
+    paybackPeriod: 'ಮರುಪಾವತಿ ಅವಧಿ',
+    co2Reduction: 'CO₂ ಕಡಿತ',
+    monthlyEnergyGeneration: 'ಮಾಸಿಕ ಸೌರ ಉತ್ಪಾದನೆ',
+    savingsOverTime: 'ಕಾಲಾನಂತರದಲ್ಲಿ ಉಳಿತಾಯ',
+    roiGrowthTrajectory: 'ROI ಬೆಳವಣಿಗೆಯ ಪಥ',
+    runAnalysisFirst: 'ದಯವಿಟ್ಟು ಮೊದಲು ವಿಶ್ಲೇಷಣೆಯನ್ನು ಚಲಾಯಿಸಿ.',
+    weatherForecast: '10-ದಿನಗಳ ಸೌರ ಶಕ್ತಿ ಮತ್ತು ಹವಾಮಾನ ಮುನ್ಸೂಚನೆ',
+    batteryPlanner: 'ಬ್ಯಾಟರಿ ಶೇಖರಣಾ ಯೋಜನೆ ಮತ್ತು ಕೊರತೆಯ ಮುನ್ಸೂಚನೆ',
 
     // Reports page
     reportsTitle: 'ವರದಿಗಳು ಮತ್ತು ಸೌರ ಮೌಲ್ಯಮಾಪನಗಳು',
@@ -332,9 +422,7 @@ const TRANSLATIONS = {
     annualGeneration: 'ವಾರ್ಷಿಕ ಸೌರ ಉತ್ಪಾದನೆ',
     annualSavings: 'ವಾರ್ಷಿಕ ಉಳಿತಾಯ',
     roi: 'ನಿರೀಕ್ಷಿತ ಆದಾಯ (ROI)',
-    paybackPeriod: 'ಮರುಪಾವತಿ ಅವಧಿ',
     batteryStorage: 'ಶಿಫಾರಸು ಮಾಡಿದ ಬ್ಯಾಟರಿ',
-    co2Reduction: 'ಕಾರ್ಬನ್ ಕಡಿತ',
   },
 };
 

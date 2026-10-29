@@ -27,6 +27,7 @@ import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { ChartContainer } from '../components/ui/Chart';
 import { downloadAnalysisReport, getLatestAnalysis } from '../services/reportService';
 import { proposalApiService } from '../services/proposalApiService';
+import { useLanguage } from '../context/LanguageContext';
 import ForecastSection from '../components/forecast/ForecastSection';
 import BatteryPlannerSection from '../components/battery/BatteryPlannerSection';
 
@@ -67,6 +68,7 @@ const formatNumber = (value, maximumFractionDigits = 0) =>
   new Intl.NumberFormat('en-IN', { maximumFractionDigits }).format(value);
 
 const Dashboard = () => {
+  const { t, language } = useLanguage();
   const [latestAnalysis, setLatestAnalysis] = useState(() => getLatestAnalysis());
 
   useEffect(() => {
@@ -80,6 +82,7 @@ const Dashboard = () => {
       window.removeEventListener('solarscope:analysis-updated', handleUpdate);
     };
   }, []);
+
   const [workspaceSummary, setWorkspaceSummary] = useState({
     totalAnalyses: 0,
     totalProposals: 0,
@@ -118,59 +121,64 @@ const Dashboard = () => {
   );
 
   const handleGenerateReport = () => {
-    const latestAnalysis = getLatestAnalysis();
+    const analysis = getLatestAnalysis();
 
-    if (!latestAnalysis) {
-      window.alert('Please run an analysis first.');
+    if (!analysis) {
+      window.alert(t('runAnalysisFirst'));
       return;
     }
 
-    downloadAnalysisReport(latestAnalysis);
+    downloadAnalysisReport(analysis, null, language);
   };
+
+  const locationSubtitle = latestAnalysis?.location || latestAnalysis?.locationName || 'Acme Corp Logistics Hub • Austin, TX';
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Project Overview</h1>
-          <p className="text-slate-500 mt-1">Acme Corp Logistics Hub • Austin, TX</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t('projectOverview')}</h1>
+          <p className="text-slate-500 mt-1">{locationSubtitle}</p>
         </div>
-        <button onClick={handleGenerateReport} className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30 cursor-pointer">
-          Generate Report
+        <button 
+          onClick={handleGenerateReport} 
+          className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm shadow-primary-500/30 cursor-pointer"
+        >
+          {t('generateReport')}
         </button>
       </div>
 
       {/* User Workspace Management Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
-          title="Total Analyses" 
+          title={t('totalAnalyses')} 
           value={formatNumber(workspaceSummary.totalAnalyses)} 
           icon={Layers} 
-          trend="Saved rooftop models"
+          trend={t('savedRooftopModels')}
           trendUp={true}
           colorClass="bg-blue-100 text-blue-600" 
         />
         <StatCard 
-          title="Total Proposals" 
+          title={t('totalProposals')} 
           value={formatNumber(workspaceSummary.totalProposals)} 
           icon={FileText} 
-          trend="Commercial proposals"
+          trend={t('commercialProposals')}
           trendUp={true}
           colorClass="bg-amber-100 text-amber-600" 
         />
         <StatCard 
-          title="Reports Generated" 
+          title={t('reportsGenerated')} 
           value={formatNumber(workspaceSummary.reportsGenerated)} 
           icon={FileDown} 
-          trend="PDF feasibility docs"
+          trend={t('pdfFeasibilityDocs')}
           trendUp={true}
           colorClass="bg-indigo-100 text-indigo-600" 
         />
         <StatCard 
-          title="Emails Sent" 
+          title={t('emailsSent')} 
           value={formatNumber(workspaceSummary.emailsSent)} 
           icon={Mail} 
-          trend="Dispatched to inbox"
+          trend={t('dispatchedToInbox')}
           trendUp={true}
           colorClass="bg-emerald-100 text-emerald-600" 
         />
@@ -179,7 +187,7 @@ const Dashboard = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <StatCard 
-          title="Est. Monthly Energy" 
+          title={t('estMonthlyEnergy')} 
           value={latestAnalysis ? formatNumber(latestAnalysis.monthlyGeneration) : '850'}
           unit="kWh" 
           icon={Zap} 
@@ -188,7 +196,7 @@ const Dashboard = () => {
           colorClass="bg-yellow-100 text-yellow-600" 
         />
         <StatCard 
-          title="Installation Cost" 
+          title={t('installationCost')} 
           value={latestAnalysis ? formatNumber(latestAnalysis.installationCost) : '450k'}
           unit="₹" 
           icon={Banknote} 
@@ -197,7 +205,7 @@ const Dashboard = () => {
           colorClass="bg-blue-100 text-blue-600" 
         />
         <StatCard 
-          title="Projected ROI" 
+          title={t('projectedRoi')} 
           value={latestAnalysis ? formatNumber(latestAnalysis.roi, 1) : '24.5'}
           unit="%" 
           icon={TrendingUp} 
@@ -206,7 +214,7 @@ const Dashboard = () => {
           colorClass="bg-green-100 text-green-600" 
         />
         <StatCard 
-          title="Payback Period" 
+          title={t('paybackPeriod')} 
           value={latestAnalysis ? formatNumber(latestAnalysis.paybackPeriod, 1) : '4.2'}
           unit="Yrs" 
           icon={Clock} 
@@ -215,7 +223,7 @@ const Dashboard = () => {
           colorClass="bg-purple-100 text-purple-600" 
         />
         <StatCard 
-          title="CO₂ Reduction" 
+          title={t('co2Reduction')} 
           value={latestAnalysis ? formatNumber(latestAnalysis.co2Reduction) : '1,240'}
           unit="kg/yr" 
           icon={TreePine} 
@@ -229,7 +237,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Chart */}
         <Card className="col-span-1 lg:col-span-2 p-0">
-          <CardHeader title="Monthly Energy Generation" className="mb-0 pt-6 px-6" />
+          <CardHeader title={t('monthlyEnergyGeneration')} className="mb-0 pt-6 px-6" />
           <CardContent>
             <ChartContainer height="h-72">
               <BarChart data={dashboardMonthlyEnergyData}>
@@ -245,7 +253,7 @@ const Dashboard = () => {
 
         {/* Secondary Chart 1 */}
         <Card className="p-0">
-          <CardHeader title="Savings Over Time" className="mb-0 pt-6 px-6" />
+          <CardHeader title={t('savingsOverTime')} className="mb-0 pt-6 px-6" />
           <CardContent>
             <ChartContainer height="h-72">
               <AreaChart data={dashboardSavingsData}>
@@ -267,7 +275,7 @@ const Dashboard = () => {
 
         {/* Secondary Chart 2 */}
         <Card className="col-span-1 lg:col-span-3 p-0">
-          <CardHeader title="ROI Growth Trajectory" className="mb-0 pt-6 px-6" />
+          <CardHeader title={t('roiGrowthTrajectory')} className="mb-0 pt-6 px-6" />
           <CardContent>
             <ChartContainer height="h-80">
               <LineChart data={roiGrowthData}>
