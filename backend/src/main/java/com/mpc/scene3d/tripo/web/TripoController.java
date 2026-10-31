@@ -1,5 +1,9 @@
 package com.mpc.scene3d.tripo.web;
 
+import com.mpc.scene3d.meshy.config.MeshyProperties;
+import com.mpc.scene3d.meshy.dto.MeshyGenerateRequest;
+import com.mpc.scene3d.meshy.dto.MeshyTaskResponse;
+import com.mpc.scene3d.meshy.service.MeshyService;
 import com.mpc.scene3d.tripo.config.TripoProperties;
 import com.mpc.scene3d.tripo.dto.TripoGenerateRequest;
 import com.mpc.scene3d.tripo.dto.TripoTaskResponse;
@@ -22,31 +26,59 @@ public class TripoController {
 
     private final TripoService tripoService;
     private final TripoProperties tripoProperties;
+    private final MeshyService meshyService;
+    private final MeshyProperties meshyProperties;
 
-    public TripoController(TripoService tripoService, TripoProperties tripoProperties) {
+    public TripoController(TripoService tripoService,
+                           TripoProperties tripoProperties,
+                           MeshyService meshyService,
+                           MeshyProperties meshyProperties) {
         this.tripoService = tripoService;
         this.tripoProperties = tripoProperties;
+        this.meshyService = meshyService;
+        this.meshyProperties = meshyProperties;
     }
 
     /**
      * POST /api/rooftops/generate-3d
-     * Submits an image URL or coordinates to Tripo AI V3 to compile a 3D .GLB model.
+     * Automatically routes to Meshy 7.1 Flagship (or Tripo if tsk_ key is passed).
      */
     @PostMapping("/generate-3d")
     public ResponseEntity<?> generate3D(@RequestBody TripoGenerateRequest request) {
         try {
-            log.info("[TripoController] Received generate-3d request: imageUrl={}, lat={}, lng={}, waitForResult={}",
-                    request.getImageUrl(), request.getLatitude(), request.getLongitude(), request.isWaitForResult());
+            String apiKey = request.getApiKey();
+            boolean isMeshy = (apiKey != null && apiKey.startsWith("msy_"))
+                    || meshyProperties.isConfigured()
+                    || (apiKey == null && !tripoProperties.isConfigured());
+
+            log.info("[Rooftop3DController] Processing generate-3d: engine={}, imageUrl={}, lat={}, lng={}",
+                    isMeshy ? "Meshy 7.1" : "Tripo V3", request.getImageUrl(), request.getLatitude(), request.getLongitude());
+
+            if (isMeshy) {
+                MeshyGenerateRequest meshyReq = new MeshyGenerateRequest();
+                meshyReq.setImageUrl(request.getImageUrl());
+                meshyReq.setLatitude(request.getLatitude());
+                meshyReq.setLongitude(request.getLongitude());
+                meshyReq.setZoom(request.getZoom());
+                meshyReq.setApiKey(request.getApiKey());
+                meshyReq.setAiModel("meshy-7.1");
+                meshyReq.setEnablePbr(true);
+                meshyReq.setShouldRemesh(true);
+                meshyReq.setWaitForResult(request.isWaitForResult());
+
+                MeshyTaskResponse meshyResp = meshyService.generate(meshyReq);
+                return ResponseEntity.ok(meshyResp);
+            }
 
             TripoTaskResponse response = tripoService.generate(request);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            log.warn("[TripoController] Bad request: {}", e.getMessage());
+            log.warn("[Rooftop3DController] Bad request: {}", e.getMessage());
             Map<String, String> err = new HashMap<>();
             err.put("error", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(err);
         } catch (Exception e) {
-            log.error("[TripoController] Internal error during 3D generation", e);
+            log.error("[Rooftop3DController] Internal error during 3D generation", e);
             Map<String, String> err = new HashMap<>();
             err.put("error", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(err);
@@ -55,47 +87,40 @@ public class TripoController {
 
     /**
      * GET /api/rooftops/generate-3d/status/{taskId}
-     * Polls the live status and retrieval progress of an in-flight Tripo 3D task.
+     * Polls the live status of an in-flight Meshy or Tripo task.
      */
     @GetMapping("/generate-3d/status/{taskId}")
-    public ResponseEntity<TripoTaskResponse> getStatus(
+    public ResponseEntity<?> getStatus(
             @PathVariable("taskId") String taskId,
             @RequestParam(value = "apiKey", required = false) String apiKey) {
+
+        boolean isMeshy = (apiKey != null && apiKey.startsWith("msy_"))
+                || meshyProperties.isConfigured()
+                || taskId.length() > 30; // Meshy uses UUID / long hex IDs
+
+        if (isMeshy) {
+            MeshyTaskResponse meshyResp = meshyService.checkStatus(taskId, apiKey);
+            return ResponseEntity.ok(meshyResp);
+        }
+
         TripoTaskResponse response = tripoService.checkStatus(taskId, apiKey);
         return ResponseEntity.ok(response);
     }
 
     /**
-     * POST /api/rooftops/generate-3d/satellite
-     * Generates a 3D model automatically from geocoded coordinates using Google Maps satellite view.
-     */
-    @PostMapping("/generate-3d/satellite")
-    public ResponseEntity<?> generateFromSatellite(
-            @RequestParam("latitude") double latitude,
-            @RequestParam("longitude") double longitude,
-            @RequestParam(value = "zoom", defaultValue = "19") int zoom,
-            @RequestParam(value = "waitForResult", defaultValue = "false") boolean waitForResult,
-            @RequestParam(value = "apiKey", required = false) String apiKey) {
-        TripoGenerateRequest req = new TripoGenerateRequest();
-        req.setLatitude(latitude);
-        req.setLongitude(longitude);
-        req.setZoom(zoom);
-        req.setWaitForResult(waitForResult);
-        req.setApiKey(apiKey);
-        return generate3D(req);
-    }
-
-    /**
      * GET /api/rooftops/generate-3d/health
-     * Returns Tripo service health and whether an API key is currently active.
+     * Returns 3D generation service health and whether an API key is active.
      */
     @GetMapping("/generate-3d/health")
     public ResponseEntity<?> getHealth() {
         Map<String, Object> status = new HashMap<>();
-        status.put("service", "Tripo AI 3D Mesh Generator");
-        status.put("configured", tripoProperties.isConfigured());
-        status.put("baseUrl", tripoProperties.getBaseUrl());
-        status.put("version", "v3");
+        status.put("service", "Meshy AI 7.1 Flagship Mesh Generator");
+        status.put("engine", "meshy-7.1");
+        status.put("configured", meshyProperties.isConfigured() || tripoProperties.isConfigured());
+        status.put("meshyConfigured", meshyProperties.isConfigured());
+        status.put("tripoConfigured", tripoProperties.isConfigured());
+        status.put("baseUrl", meshyProperties.getBaseUrl());
+        status.put("version", "7.1");
         return ResponseEntity.ok(status);
     }
 }
