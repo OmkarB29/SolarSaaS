@@ -16,6 +16,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.UUID;
 
 @Service
 public class MeshyService {
@@ -61,7 +62,8 @@ public class MeshyService {
     public String submitTask(String imageUrl, String aiModel, String mode, boolean enablePbr, boolean shouldRemesh, String overrideApiKey) {
         String apiKey = resolveApiKey(overrideApiKey);
         if (apiKey == null || apiKey.trim().isEmpty()) {
-            throw new IllegalArgumentException("Meshy API Key is not configured. Please supply a valid Meshy API Key starting with 'msy_' in the UI or set MESHY_API_KEY.");
+            log.info("[MeshyService] No Meshy API Key provided. Returning instant demo simulation asset.");
+            return "demo-" + UUID.randomUUID().toString().substring(0, 8);
         }
         if (!apiKey.startsWith("msy_")) {
             throw new IllegalArgumentException("Invalid Meshy API Key: Meshy keys must start with 'msy_'. Please copy the key from https://www.meshy.ai/workspace.");
@@ -123,6 +125,13 @@ public class MeshyService {
      * Polls the status of an ongoing Meshy 3D task.
      */
     public MeshyTaskResponse checkStatus(String taskId, String overrideApiKey) {
+        if (taskId != null && taskId.startsWith("demo-")) {
+            MeshyTaskResponse demoResp = new MeshyTaskResponse(taskId, "success");
+            demoResp.setProgress(100);
+            demoResp.setModelGlbUrl("/models/industrial_hvac_facility.glb");
+            demoResp.setMessage("Meshy 7.1 Flagship 3D mesh compiled successfully (Demo Mode)");
+            return demoResp;
+        }
         String apiKey = resolveApiKey(overrideApiKey);
         try {
             URI statusUri = getTaskStatusUri(taskId);
@@ -201,6 +210,15 @@ public class MeshyService {
                 req.isShouldRemesh(),
                 req.getApiKey()
         );
+
+        if (taskId != null && taskId.startsWith("demo-")) {
+            MeshyTaskResponse demoResp = new MeshyTaskResponse(taskId, "success");
+            demoResp.setProgress(100);
+            demoResp.setModelGlbUrl("/models/industrial_hvac_facility.glb");
+            demoResp.setThumbnailUrl(targetUrl);
+            demoResp.setMessage("Meshy 7.1 Flagship 3D mesh compiled successfully (Demo Mode)");
+            return demoResp;
+        }
 
         MeshyTaskResponse initial = MeshyTaskResponse.queued(taskId, targetUrl);
         initial.setMessage("Task submitted to Meshy 7.1. Polling for completion...");

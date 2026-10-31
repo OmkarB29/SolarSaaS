@@ -569,9 +569,11 @@ const ModelView3D = () => {
 
       if (result && result.modelGlbUrl) {
         const newAsset = {
-          id: `gen-${Date.now()}`,
-          title: rooftop?.address || 'Custom Commercial Rooftop',
-          subtitle: `Meshy 7.1 • ${meshyModeTab === 'high_detail' ? 'High Detail' : 'Smart Topology'}`,
+          id: result.taskId || `gen-${Date.now()}`,
+          title: rooftop?.address || 'Commercial Rooftop Digital Twin',
+          subtitle: result.isDemo
+            ? `Meshy 7.1 • Demo Twin (${meshyModeTab === 'high_detail' ? 'High Detail' : 'Smart Topology'})`
+            : `Meshy 7.1 • Cloud Generation`,
           modelGlbUrl: result.modelGlbUrl,
           modelFbxUrl: result.modelFbxUrl,
           thumbnailUrl: meshyInputImage || result.thumbnailUrl,
@@ -580,7 +582,7 @@ const ModelView3D = () => {
           topology: meshyModeTab === 'smart_topology' ? 'Quad' : 'Triangle',
           date: 'Just now',
           model: meshyModelEngine === 'meshy-7.1' ? 'Meshy 7.1 - Flagship' : 'Meshy 6',
-          badge: 'New Generation',
+          badge: result.isDemo ? 'Demo AI Twin' : 'Cloud GPU Mesh',
         };
 
         setMeshyModel(newAsset);
@@ -1035,14 +1037,14 @@ const ModelView3D = () => {
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                     meshyApiKey?.startsWith('msy_') || meshyHealth?.meshyConfigured
                       ? 'bg-lime-500/20 text-lime-400 border border-lime-500/30'
-                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                   }`}
                 >
                   {meshyApiKey?.startsWith('msy_')
-                    ? 'Active'
+                    ? 'Cloud Key Active'
                     : meshyHealth?.meshyConfigured
                     ? 'Active (Server)'
-                    : 'Key Needed'}
+                    : 'Demo Mode Active'}
                 </span>
               </div>
 
@@ -1118,12 +1120,16 @@ const ModelView3D = () => {
               {meshyLoading ? (
                 <>
                   <RefreshCw size={16} className="animate-spin text-slate-950" />
-                  <span>Generating 3D Mesh...</span>
+                  <span>Generating 3D Digital Twin...</span>
                 </>
               ) : (
                 <>
                   <Sparkles size={16} />
-                  <span>Generate (1 min • 20 credits)</span>
+                  <span>
+                    {meshyApiKey?.startsWith('msy_')
+                      ? 'Generate (Cloud GPU • 20 credits)'
+                      : 'Generate 3D Model (Instant Demo)'}
+                  </span>
                 </>
               )}
             </button>
