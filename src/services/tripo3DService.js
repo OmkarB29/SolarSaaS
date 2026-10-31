@@ -83,13 +83,19 @@ export const pollTripoTaskStatus = async (taskId, apiKey = null, onProgress = nu
 export const generateTripo3DModel = async (params, onProgress = null) => {
   const { imageUrl, latitude, longitude, zoom, apiKey, modelVersion } = params;
 
+  if (apiKey && apiKey.trim().startsWith('tcli_')) {
+    throw new Error(
+      "Invalid API Key: You entered a Tripo Client ID ('tcli_...'). Tripo API requires a Secret Key starting with 'tsk_'. Please copy the Secret Key from platform.tripo3d.ai."
+    );
+  }
+
   const payload = {
     imageUrl: imageUrl || undefined,
     latitude: latitude || undefined,
     longitude: longitude || undefined,
     zoom: zoom || 19,
     apiKey: apiKey || undefined,
-    modelVersion: modelVersion || 'v3-geometry',
+    modelVersion: modelVersion && modelVersion !== 'v3-geometry' ? modelVersion : 'v3.1-20260211',
     waitForResult: false, // Poll asynchronously on frontend for live progress feedback
   };
 
@@ -108,6 +114,9 @@ export const generateTripo3DModel = async (params, onProgress = null) => {
       if (errJson.error) errMsg = errJson.error;
     } catch {
       // ignore
+    }
+    if (response.status === 401 || errMsg.includes('Invalid API key') || errMsg.includes('tcli_')) {
+      errMsg = "Tripo Authentication Failed (HTTP 401): The API Key is invalid. Tripo AI requires a Secret Key starting with 'tsk_'. If you have a 'tcli_...' value, that is your Client ID, not the Secret Key. Please copy your Secret Key from platform.tripo3d.ai.";
     }
     throw new Error(errMsg);
   }

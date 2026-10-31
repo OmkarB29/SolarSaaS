@@ -64,7 +64,7 @@ import {
   calculatePolygonArea,
 } from '../utils/geometry3D';
 
-/* ─── Sample Commercial L-Shaped Rooftop Preset ─── */
+/* â”€â”€â”€ Sample Commercial L-Shaped Rooftop Preset â”€â”€â”€ */
 const SAMPLE_COMMERCIAL_ROOFTOP = {
   address: 'Commercial Logistics & Laundry Facility',
   roofArea: 1095,
@@ -80,7 +80,7 @@ const SAMPLE_COMMERCIAL_ROOFTOP = {
   ],
 };
 
-/* ─── Storage Retrieval Helpers ─── */
+/* â”€â”€â”€ Storage Retrieval Helpers â”€â”€â”€ */
 const getStoredRooftop = () => {
   try {
     return JSON.parse(localStorage.getItem('solarscope.rooftop'));
@@ -129,7 +129,7 @@ const normalizePolygon = (poly) => {
     .filter((pt) => !isNaN(pt[0]) && !isNaN(pt[1]) && (pt[0] !== 0 || pt[1] !== 0));
 };
 
-/* ─── 3D Scene Content Rig (CAD Engine) ─── */
+/* â”€â”€â”€ 3D Scene Content Rig (CAD Engine) â”€â”€â”€ */
 const SceneContent = ({
   sceneData,
   showPanels,
@@ -316,7 +316,7 @@ const SceneContent = ({
   );
 };
 
-/* ─── Interactive Panel Telemetry Tooltip ─── */
+/* â”€â”€â”€ Interactive Panel Telemetry Tooltip â”€â”€â”€ */
 const PanelTooltip = ({ panel }) => {
   if (!panel) return null;
   return (
@@ -344,7 +344,7 @@ const PanelTooltip = ({ panel }) => {
           <div className="flex justify-between">
             <span className="text-slate-400">Azimuth / Tilt:</span>
             <span className="font-mono text-emerald-400">
-              {panel.azimuthDegrees || 180}° / {panel.tiltDegrees || 14}°
+              {panel.azimuthDegrees || 180}Â° / {panel.tiltDegrees || 14}Â°
             </span>
           </div>
           <div className="flex justify-between">
@@ -359,7 +359,7 @@ const PanelTooltip = ({ panel }) => {
   );
 };
 
-/* ─── WebGL Canvas Error Boundary ─── */
+/* â”€â”€â”€ WebGL Canvas Error Boundary â”€â”€â”€ */
 class CanvasErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -405,7 +405,7 @@ class CanvasErrorBoundary extends React.Component {
   }
 }
 
-/* ─── Main View Component ─── */
+/* â”€â”€â”€ Main View Component â”€â”€â”€ */
 const ModelView3D = () => {
   const { t } = useLanguage();
   // Mode Switcher: 'cad' vs 'tripo'
@@ -429,10 +429,18 @@ const ModelView3D = () => {
   const [cameraPreset, setCameraPreset] = useState('iso');
 
   // Tripo AI State
-  const [tripoApiKey, setTripoApiKey] = useState(
-    () => localStorage.getItem('solarscope.tripo.apiKey') || ''
-  );
+  const [tripoApiKey, setTripoApiKey] = useState(() => {
+    const saved = localStorage.getItem('solarscope.tripo.apiKey') || '';
+    if (saved.startsWith('tcli_')) {
+      localStorage.removeItem('solarscope.tripo.apiKey');
+      return '';
+    }
+    return saved;
+  });
   const [tripoCustomUrl, setTripoCustomUrl] = useState('');
+  const [tripoModelVersion, setTripoModelVersion] = useState(
+    () => localStorage.getItem('solarscope.tripo.modelVersion') || 'v3.1-20260211'
+  );
   const [tripoLoading, setTripoLoading] = useState(false);
   const [tripoProgress, setTripoProgress] = useState(null);
   const [tripoModel, setTripoModel] = useState(() => getStoredTripoModel());
@@ -555,11 +563,38 @@ const ModelView3D = () => {
 
   // Tripo AI Action Handlers
   const handleSaveApiKey = (key) => {
-    setTripoApiKey(key);
-    localStorage.setItem('solarscope.tripo.apiKey', key);
+    const trimmed = (key || '').trim();
+    setTripoApiKey(trimmed);
+    if (trimmed && !trimmed.startsWith('tcli_')) {
+      localStorage.setItem('solarscope.tripo.apiKey', trimmed);
+    } else {
+      localStorage.removeItem('solarscope.tripo.apiKey');
+    }
+  };
+
+  const handleLoadDemoModel = () => {
+    const demo = {
+      taskId: 'demo-sample-mesh',
+      status: 'success',
+      progress: 100,
+      modelGlbUrl: '/models/sample_rooftop.glb',
+      message: 'Demo Sample 3D Rooftop Mesh (Ready for R3F Orbit & Download)',
+      originalImageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600',
+    };
+    setTripoModel(demo);
+    localStorage.setItem('solarscope.tripo.latestModel', JSON.stringify(demo));
+    setTripoError('');
+    setTripoProgress(null);
   };
 
   const executeTripoGeneration = async (genParams) => {
+    if (tripoApiKey && tripoApiKey.startsWith('tcli_')) {
+      setTripoError(
+        "Invalid API Key: You entered a Client ID ('tcli_...'). Tripo API requires a Secret Key starting with 'tsk_'. Please copy the Secret Key from platform.tripo3d.ai."
+      );
+      return;
+    }
+
     setTripoLoading(true);
     setTripoError('');
     setTripoProgress({ status: 'starting', progress: 5, message: 'Initiating Tripo AI V3 session...' });
@@ -569,6 +604,7 @@ const ModelView3D = () => {
         {
           ...genParams,
           apiKey: tripoApiKey || undefined,
+          modelVersion: tripoModelVersion || 'v3.1-20260211',
         },
         (progressUpdate) => {
           setTripoProgress(progressUpdate);
@@ -625,7 +661,7 @@ const ModelView3D = () => {
 
   return (
     <div className="flex flex-col h-full space-y-4 pb-8">
-      {/* ─── Top Header with Mode Switcher ─── */}
+      {/* â”€â”€â”€ Top Header with Mode Switcher â”€â”€â”€ */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -634,7 +670,7 @@ const ModelView3D = () => {
             </h1>
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-blue-500/10 text-blue-700 px-3 py-1 rounded-full border border-blue-500/20">
               <Sparkles size={13} className="text-blue-600" />
-              CAD Extrusion • Tripo AI V3 • Three.js R3F
+              CAD Extrusion â€¢ Tripo AI V3 â€¢ Three.js R3F
             </span>
           </div>
           <p className="text-slate-500 mt-1 text-sm">
@@ -672,9 +708,9 @@ const ModelView3D = () => {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
           MODE A: CAD DIGITAL TWIN (EXACT EXTENSION + 418 MODULES)
-         ══════════════════════════════════════════════════════════ */}
+         â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {activeMode === 'cad' && (
         <>
           {/* Preset Notice / Information Banner */}
@@ -714,7 +750,7 @@ const ModelView3D = () => {
             </div>
           )}
 
-          {/* ─── Main Viewport Grid ─── */}
+          {/* â”€â”€â”€ Main Viewport Grid â”€â”€â”€ */}
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 flex-1 min-h-0">
             {/* Left Side Controls & Telemetry */}
             <div className="xl:col-span-1 flex flex-col gap-4">
@@ -745,7 +781,7 @@ const ModelView3D = () => {
                     <div className="flex justify-between pt-1.5">
                       <span className="text-slate-500">Roof Area</span>
                       <span className="font-semibold text-slate-800">
-                        {sceneData.roofAreaM2?.toLocaleString('en-IN')} m²
+                        {sceneData.roofAreaM2?.toLocaleString('en-IN')} mÂ²
                       </span>
                     </div>
                     <div className="flex justify-between pt-1.5">
@@ -762,7 +798,7 @@ const ModelView3D = () => {
                     </div>
                     <div className="flex justify-between pt-1.5">
                       <span className="text-slate-500">Hardware Mount</span>
-                      <span className="font-semibold text-slate-800">14° Southern Tilt</span>
+                      <span className="font-semibold text-slate-800">14Â° Southern Tilt</span>
                     </div>
                   </div>
                 </Card>
@@ -933,7 +969,7 @@ const ModelView3D = () => {
               </button>
             </div>
 
-            {/* ─── 3D WebGL Canvas ─── */}
+            {/* â”€â”€â”€ 3D WebGL Canvas â”€â”€â”€ */}
             <Card
               className="xl:col-span-4 p-0 overflow-hidden relative shadow-md border border-slate-200"
               style={{ minHeight: '620px' }}
@@ -996,7 +1032,7 @@ const ModelView3D = () => {
                   SolarScope CAD Twin
                 </span>
                 <span className="text-[10px] text-emerald-400 border-l border-slate-700 pl-2 font-medium">
-                  Strictly Bounded • {activePanelCount} Modules
+                  Strictly Bounded â€¢ {activePanelCount} Modules
                 </span>
               </div>
             </Card>
@@ -1004,9 +1040,9 @@ const ModelView3D = () => {
         </>
       )}
 
-      {/* ══════════════════════════════════════════════════════════
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
           MODE B: TRIPO AI GENERATIVE 3D MESH (V3 PIPELINE)
-         ══════════════════════════════════════════════════════════ */}
+         â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {activeMode === 'tripo' && (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 flex-1 min-h-0">
           {/* Left Side Tripo Controls */}
@@ -1022,42 +1058,85 @@ const ModelView3D = () => {
                 </div>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    tripoHealth?.configured || tripoApiKey
+                    tripoApiKey?.startsWith('tsk_')
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : tripoApiKey?.startsWith('tcli_')
+                      ? 'bg-rose-100 text-rose-800'
+                      : tripoHealth?.configured
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-amber-100 text-amber-800'
                   }`}
                 >
-                  {tripoHealth?.configured || tripoApiKey ? 'Active' : 'Key Needed'}
+                  {tripoApiKey?.startsWith('tsk_')
+                    ? 'Active'
+                    : tripoApiKey?.startsWith('tcli_')
+                    ? 'Client ID (Invalid)'
+                    : tripoHealth?.configured
+                    ? 'Active (Server)'
+                    : 'Key Needed'}
                 </span>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs text-slate-500 font-medium block">
-                  Client Secret / API Key
+                  Tripo API Secret Key (starts with <span className="font-mono text-blue-600 font-semibold">tsk_</span>)
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="password"
-                    placeholder="Enter Tripo secret key (or uses backend default)"
+                    placeholder="tsk_xxxxxxxxxxxxxxxxxxxxxxxx"
                     value={tripoApiKey}
                     onChange={(e) => handleSaveApiKey(e.target.value)}
-                    className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
+                    className={`flex-1 px-3 py-2 text-xs rounded-xl border focus:outline-none focus:ring-2 font-mono ${
+                      tripoApiKey?.startsWith('tcli_')
+                        ? 'border-rose-400 bg-rose-50/40 focus:ring-rose-400/20'
+                        : 'border-slate-300 focus:ring-blue-500/20'
+                    }`}
                   />
                   {tripoApiKey && (
                     <button
                       type="button"
                       onClick={() => handleSaveApiKey('')}
-                      className="px-2 py-1 text-[11px] text-slate-400 hover:text-red-500"
+                      className="px-2 py-1 text-[11px] text-slate-400 hover:text-red-500 cursor-pointer"
                     >
                       Clear
                     </button>
                   )}
                 </div>
+
+                {tripoApiKey?.startsWith('tcli_') && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-start gap-2">
+                    <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-600" />
+                    <span>
+                      <strong>Client ID detected!</strong> Tripo API requires a <strong>Secret Key</strong> starting with <code className="font-bold">tsk_</code>. Copy your secret key from <a href="https://platform.tripo3d.ai" target="_blank" rel="noreferrer" className="underline font-semibold text-blue-600">platform.tripo3d.ai</a>.
+                    </span>
+                  </div>
+                )}
+
                 <p className="text-[10px] text-slate-400">
-                  {tripoHealth?.configured
+                  {tripoApiKey?.startsWith('tsk_')
+                    ? 'Using custom Tripo API secret key saved in browser'
+                    : tripoHealth?.configured
                     ? 'Default server key configured in application.properties'
-                    : 'Paste the Tripo API Key created from platform.tripo3d.ai'}
+                    : 'Tripo API keys start with tsk_. Obtain one at platform.tripo3d.ai'}
                 </p>
+
+                {/* Model Engine Selector */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500 font-medium">Model Engine</span>
+                  <select
+                    value={tripoModelVersion}
+                    onChange={(e) => {
+                      setTripoModelVersion(e.target.value);
+                      localStorage.setItem('solarscope.tripo.modelVersion', e.target.value);
+                    }}
+                    className="px-2 py-1 text-xs rounded-lg border border-slate-300 bg-white font-mono text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="v3.1-20260211">v3.1-20260211 (Tripo H3.1 Flagship)</option>
+                    <option value="v3.0-20250812">v3.0-20250812 (Tripo V3.0)</option>
+                    <option value="v2.5-20250123">v2.5-20250123 (Tripo V2.5 Fast)</option>
+                  </select>
+                </div>
               </div>
             </Card>
 
@@ -1079,6 +1158,22 @@ const ModelView3D = () => {
                   <span>Generate from Active Rooftop Satellite</span>
                 </div>
                 <ChevronRight size={14} />
+              </button>
+
+              {/* Demo Preview Option */}
+              <button
+                type="button"
+                onClick={handleLoadDemoModel}
+                disabled={tripoLoading}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2">
+                  <Box size={15} className="text-blue-600" />
+                  <span>Preview Demo 3D Rooftop Mesh</span>
+                </div>
+                <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                  Instant • No Key
+                </span>
               </button>
 
               <div className="relative flex py-1 items-center">
@@ -1124,7 +1219,7 @@ const ModelView3D = () => {
                     Choose local JPG / PNG image
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    Satellite top-down or 45° aerial view works best
+                    Satellite top-down or 45Â° aerial view works best
                   </span>
                   <input
                     type="file"
@@ -1165,11 +1260,30 @@ const ModelView3D = () => {
 
             {/* Error Message */}
             {tripoError && (
-              <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs shadow-xs">
-                <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <strong className="block font-bold">Tripo AI Error</strong>
-                  <span>{tripoError}</span>
+              <div className="flex flex-col gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs shadow-xs">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <strong className="block font-bold">Tripo AI Error</strong>
+                    <span className="leading-relaxed block mt-0.5">{tripoError}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-red-200/60">
+                  <button
+                    type="button"
+                    onClick={handleLoadDemoModel}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[11px] transition-colors cursor-pointer"
+                  >
+                    Preview Demo 3D Mesh
+                  </button>
+                  <a
+                    href="https://platform.tripo3d.ai"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-blue-700 hover:underline font-semibold"
+                  >
+                    Get Tripo API Secret Key (tsk_...) &rarr;
+                  </a>
                 </div>
               </div>
             )}
@@ -1231,15 +1345,26 @@ const ModelView3D = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleGenerateFromActiveRooftop}
-                  disabled={tripoLoading}
-                  className="mt-6 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-5 py-3 rounded-xl shadow-lg shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <Wand2 size={15} />
-                  <span>Start 3D Generation with Active Rooftop</span>
-                </button>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleGenerateFromActiveRooftop}
+                    disabled={tripoLoading}
+                    className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-5 py-3 rounded-xl shadow-lg shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Wand2 size={15} />
+                    <span>Start 3D Generation with Active Rooftop</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLoadDemoModel}
+                    disabled={tripoLoading}
+                    className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-5 py-3 rounded-xl border border-slate-700 transition-all cursor-pointer"
+                  >
+                    <Box size={15} className="text-blue-400" />
+                    <span>Preview Demo 3D Mesh</span>
+                  </button>
+                </div>
               </Card>
             )}
           </div>

@@ -70,7 +70,7 @@ export const GoogleSolarMap = ({
   // Interactive Rooftop Drawing State (Corner-by-corner)
   const [activeDrawingPoints, setActiveDrawingPoints] = useState([]);
 
-  // Intercept Google Maps auth failure (ApiTargetBlockedMapError, etc.)
+  // Intercept Google Maps auth failure (ApiTargetBlockedMapError, BillingNotEnabledMapError, etc.)
   useEffect(() => {
     const handleAuthFailure = () => {
       console.warn('[GoogleSolarMap] gm_authFailure fired: Switching to high-res satellite backup.');
@@ -79,10 +79,30 @@ export const GoogleSolarMap = ({
     };
 
     window.gm_authFailure = handleAuthFailure;
+
+    // Intercept console.error to catch BillingNotEnabledMapError & ApiNotActivatedMapError
+    const originalConsoleError = console.error;
+    console.error = (...args) => {
+      const msg = args.map((a) => (typeof a === 'string' ? a : (a?.message || ''))).join(' ');
+      if (
+        msg.includes('BillingNotEnabledMapError') ||
+        msg.includes('ApiNotActivatedMapError') ||
+        msg.includes('ApiTargetBlockedMapError') ||
+        msg.includes('DeletedKeyMapError') ||
+        msg.includes('InvalidKeyMapError')
+      ) {
+        console.warn('[GoogleSolarMap] Google Maps restriction/billing error intercepted in console:', msg);
+        setAuthBlockedError(true);
+        setIsSdkReady(false);
+      }
+      originalConsoleError.apply(console, args);
+    };
+
     return () => {
       if (window.gm_authFailure === handleAuthFailure) {
         window.gm_authFailure = null;
       }
+      console.error = originalConsoleError;
     };
   }, []);
 
@@ -690,22 +710,18 @@ export const GoogleSolarMap = ({
                 Your key currently only has <strong>Solar API</strong> checked. To enable the native Google Maps canvas, check <strong>Maps JavaScript API</strong>:
               </p>
 
-              <div className="rounded-xl bg-slate-950 p-3.5 space-y-2 text-xs border border-slate-800 text-slate-300">
+              <div className="rounded-xl bg-slate-950 p-3.5 space-y-2.5 text-xs border border-slate-800 text-slate-300">
                 <div className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                  <span>1. Go to your open <strong>Google Cloud Console &rarr; Keys & Credentials</strong> tab.</span>
+                  <span><strong>1. Link Billing Account (Required):</strong> Google Maps JS API requires an active billing account on your Google Cloud project (even with the $200 free monthly credit). Go to <a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer" className="text-amber-400 underline font-semibold">Google Cloud Billing</a> and link an account.</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                  <span>2. Click on your key: <strong>Maps Platform API Key</strong>.</span>
+                  <span><strong>2. Enable Maps JavaScript API:</strong> Go to <strong>APIs & Services &rarr; Library</strong> and ensure <strong>Maps JavaScript API</strong> is Enabled.</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                  <span>3. Under <strong>API restrictions</strong>, select <strong>Maps JavaScript API</strong>.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                  <span>4. Click <strong>Save</strong> at the bottom.</span>
+                  <span><strong>3. Check API Restrictions:</strong> Under <strong>APIs & Services &rarr; Credentials</strong>, edit your key and select both <strong>Maps JavaScript API</strong> and <strong>Solar API</strong> (or choose <em>Don't restrict key</em>).</span>
                 </div>
               </div>
 
@@ -813,6 +829,15 @@ export const GoogleSolarMap = ({
         >
           {fluxEnabled ? <Eye size={14} /> : <EyeOff size={14} />}
           <span>Solar Flux Overlay</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAuthBlockedError(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-md backdrop-blur-md bg-slate-900/85 hover:bg-slate-900 text-slate-200 border border-slate-700 hover:text-amber-400 transition-colors cursor-pointer"
+          title="Switch to Free High-Resolution Satellite Map (No Google Billing Required)"
+        >
+          <span>Free Satellite (Leaflet)</span>
         </button>
 
         <div className="flex rounded-lg overflow-hidden border border-slate-700 bg-slate-900/85 shadow-md backdrop-blur-md text-2xs font-semibold">
