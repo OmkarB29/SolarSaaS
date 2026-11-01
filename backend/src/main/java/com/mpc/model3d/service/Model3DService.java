@@ -58,6 +58,15 @@ public class Model3DService {
         this.uploadedImageProvider = uploadedImageProvider;
     }
 
+    @jakarta.annotation.PostConstruct
+    public void logStartupDiagnostics() {
+        boolean hasKey = meshyProperties.getApiKey() != null && !meshyProperties.getApiKey().trim().isEmpty();
+        boolean mock = meshyProperties.isMockEnabled();
+        String mode = (!hasKey || mock) ? "MOCK" : "REAL";
+        log.info("[3D Pipeline Startup] Meshy Mode: {} | API Key Configured: {} | Effective Mock-Enabled: {}",
+                mode, (hasKey ? "yes" : "no"), mock);
+    }
+
     /**
      * Creates a new 3D generation job or returns an existing cached job for identical polygon hash.
      */

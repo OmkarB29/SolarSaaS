@@ -343,40 +343,113 @@ export default function Model3DCanvas({
   const [scaleFactor, setScaleFactor] = useState(1.0);
   const [elevation, setElevation] = useState(0.0);
 
-  // Model URL state with object blob resolution and error fallback
+  // Model loading states & diagnostic tracking
   const [modelGlbUrl, setModelGlbUrl] = useState(null);
+  const [modelStatus, setModelStatus] = useState('idle'); // 'idle' | 'generating' | 'downloading' | 'parsing' | 'ready' | 'error'
+  const [modelError, setModelError] = useState(null);
+  const [meshSizeMb, setMeshSizeMb] = useState(null);
+
+  // Active geometry source badge resolution
+  const activeGeometrySource = useMemo(() => {
+    if (job?.status === 'SUCCEEDED' || modelStatus === 'ready') {
+      const isMeshy = job?.consumedCredits > 0 || job?.meshyTaskId || (job?.modelUrl && job.modelUrl.includes('meshy'));
+      if (isMeshy) {
+        return {
+          name: 'Meshy AI',
+          badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+          dotClass: 'bg-emerald-400',
+          jobId: job?.id,
+          credits: job?.consumedCredits || 30,
+        };
+      }
+      return {
+        name: 'Mock',
+        badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        dotClass: 'bg-amber-400',
+        jobId: job?.id,
+        credits: 0,
+      };
+    }
+    if (job?.status === 'IN_PROGRESS' || job?.status === 'PENDING') {
+      return {
+        name: 'Meshy AI (Generating)',
+        badgeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+        dotClass: 'bg-blue-400 animate-ping',
+        jobId: job?.id,
+        credits: job?.consumedCredits || 0,
+      };
+    }
+    return {
+      name: 'Parametric',
+      badgeClass: 'bg-slate-800/80 text-slate-300 border-slate-700',
+      dotClass: 'bg-slate-400',
+      jobId: null,
+      credits: 0,
+    };
+  }, [job, modelStatus]);
+
+  // Robust Authenticated GLB Download & Blob URL Generation
+  const loadGlbModel = useCallback(async (jobToLoad) => {
+    if (!jobToLoad || (!jobToLoad.id && !jobToLoad.modelUrl)) return null;
+    setModelError(null);
+    setModelStatus('downloading');
+
+    try {
+      const targetUrl = jobToLoad.modelUrl || model3dService.getModelUrl(jobToLoad.id);
+      const token = getStoredAuth()?.token;
+
+      console.info(`[Model3DCanvas] Requesting GLB for Job #${jobToLoad.id || 'direct'} from: ${targetUrl}`);
+      const res = await fetch(targetUrl, {
+        headers: (!jobToLoad.modelUrl && token) ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      console.info(`[Model3DCanvas] GLB Response: HTTP ${res.status} ${res.statusText}, Content-Type: ${res.headers.get('content-type')}`);
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '');
+        throw new Error(`Server returned HTTP ${res.status} (${res.statusText}): ${errorText || 'Failed to download model'}`);
+      }
+
+      const cl = res.headers.get('content-length');
+      if (cl) {
+        setMeshSizeMb((parseInt(cl, 10) / (1024 * 1024)).toFixed(1));
+      }
+
+      const blob = await res.blob();
+      console.info(`[Model3DCanvas] Downloaded GLB Blob: ${blob.size} bytes (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+      const blobUrl = URL.createObjectURL(blob);
+      setModelGlbUrl(blobUrl);
+      setModelStatus('ready');
+      return blobUrl;
+    } catch (err) {
+      console.error('[Model3DCanvas] Failed to download or process GLB model:', err);
+      setModelError(err.message || 'Network error while retrieving GLB model.');
+      setModelStatus('error');
+      setModelGlbUrl(null);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
     let blobUrlToRevoke = null;
 
     if (job?.status === 'SUCCEEDED') {
-      // 1. Direct signed CDN URL from Meshy AI
-      if (job.modelUrl) {
-        setModelGlbUrl(job.modelUrl);
-        return;
-      }
-
-      // 2. Stream from backend GLB endpoint
-      if (job.id) {
-        model3dService
-          .fetchModelBlobUrl(job.id)
-          .then((blobUrl) => {
-            if (active) {
-              blobUrlToRevoke = blobUrl;
-              setModelGlbUrl(blobUrl);
-            } else {
-              URL.revokeObjectURL(blobUrl);
-            }
-          })
-          .catch((err) => {
-            console.warn('Authenticated GLB fetch failed, falling back to direct URL:', err);
-            if (active) {
-              setModelGlbUrl(model3dService.getModelUrl(job.id));
-            }
-          });
-      }
+      loadGlbModel(job).then((url) => {
+        if (active && url) {
+          blobUrlToRevoke = url;
+        } else if (url) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    } else if (job?.status === 'IN_PROGRESS' || job?.status === 'PENDING') {
+      setModelStatus('generating');
+      setModelGlbUrl(null);
+    } else if (job?.status === 'FAILED') {
+      setModelStatus('error');
+      setModelError(job.errorMessage || 'Meshy 3D generation failed on backend.');
+      setModelGlbUrl(null);
     } else {
+      setModelStatus('idle');
       setModelGlbUrl(null);
     }
 
@@ -386,7 +459,7 @@ export default function Model3DCanvas({
         URL.revokeObjectURL(blobUrlToRevoke);
       }
     };
-  }, [job]);
+  }, [job, loadGlbModel]);
 
   // Dynamically calculate minimum rotated rectangle if not passed in props
   const effectiveMinRotatedRect = useMemo(() => {
@@ -537,6 +610,48 @@ export default function Model3DCanvas({
             )}
           </Canvas>
         </CanvasErrorBoundary>
+
+        {/* Active Geometry Source Badge (Master Prompt Phase 7 Requirement 5) */}
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5 pointer-events-auto">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-md shadow-xl text-xs font-semibold ${activeGeometrySource.badgeClass}`}>
+            <span className={`w-2 h-2 rounded-full ${activeGeometrySource.dotClass}`} />
+            <span>Source: <strong>{activeGeometrySource.name}</strong></span>
+            {activeGeometrySource.jobId && (
+              <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
+                Job #{activeGeometrySource.jobId}
+              </span>
+            )}
+            <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
+              {activeGeometrySource.credits} cr
+            </span>
+            {meshSizeMb && modelStatus === 'ready' && (
+              <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
+                {meshSizeMb} MB
+              </span>
+            )}
+          </div>
+
+          {modelStatus === 'downloading' && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-950/80 border border-blue-800 text-blue-300 text-2xs backdrop-blur-md">
+              <Loader2 size={12} className="animate-spin text-blue-400" />
+              <span>Streaming GLB mesh from CDN...</span>
+            </div>
+          )}
+
+          {modelStatus === 'error' && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-red-950/90 border border-red-800 text-red-200 text-2xs shadow-lg backdrop-blur-md max-w-sm">
+              <AlertCircle size={14} className="text-red-400 shrink-0" />
+              <span className="truncate">{modelError}</span>
+              <button
+                type="button"
+                onClick={() => loadGlbModel(job)}
+                className="ml-auto underline text-red-300 hover:text-white font-bold cursor-pointer shrink-0"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Loading Progress Overlay */}
         {job && job.status === 'IN_PROGRESS' && (
