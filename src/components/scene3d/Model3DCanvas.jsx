@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Center } from '@react-three/drei';
 import * as THREE from 'three';
+import * as turf from '@turf/turf';
 import {
   AlertCircle,
   Eye,
@@ -81,14 +82,15 @@ class CanvasErrorBoundary extends React.Component {
 
 /**
  * Loads and renders the GLB Model with user adjustment controls
+ * Aligns roof surface to buildingHeight + elevation
  */
-function GlbMeshModel({ url, scale, rotationDeg, elevation }) {
+function GlbMeshModel({ url, scale, rotationDeg, elevation, buildingHeight = 3.5 }) {
   const { scene } = useGLTF(url);
   const clonedScene = useMemo(() => scene.clone(), [scene]);
 
   return (
     <group
-      position={[0, elevation, 0]}
+      position={[0, buildingHeight + elevation, 0]}
       rotation={[0, (rotationDeg * Math.PI) / 180, 0]}
       scale={[scale, scale, scale]}
     >
@@ -102,14 +104,16 @@ function GlbMeshModel({ url, scale, rotationDeg, elevation }) {
 /**
  * Measured Rooftop Geometry & Extrusion Layer
  */
-function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5 }) {
+function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5, elevation = 0 }) {
   // Construct 2D Three.Shape for the roof boundary
+  // Note: Three.js ExtrudeGeometry rotated by [-Math.PI / 2, 0, 0] maps (u, v) -> (u, depth, -v).
+  // Using v = -z ensures 3D Z = -(-z) = +z.
   const shape = useMemo(() => {
     if (localVertices.length < 3) return null;
     const s = new THREE.Shape();
-    s.moveTo(localVertices[0].x, localVertices[0].z);
+    s.moveTo(localVertices[0].x, -localVertices[0].z);
     for (let i = 1; i < localVertices.length; i++) {
-      s.lineTo(localVertices[i].x, localVertices[i].z);
+      s.lineTo(localVertices[i].x, -localVertices[i].z);
     }
     s.closePath();
 
@@ -117,9 +121,9 @@ function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 
     obstaclesLocal.forEach((obs) => {
       if (obs.length >= 3) {
         const hole = new THREE.Path();
-        hole.moveTo(obs[0].x, obs[0].z);
+        hole.moveTo(obs[0].x, -obs[0].z);
         for (let j = 1; j < obs.length; j++) {
-          hole.lineTo(obs[j].x, obs[j].z);
+          hole.lineTo(obs[j].x, -obs[j].z);
         }
         hole.closePath();
         s.holes.push(hole);
@@ -141,26 +145,28 @@ function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 
   if (!shape) return null;
 
   return (
-    <group rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+    <group rotation={[-Math.PI / 2, 0, 0]} position={[0, elevation, 0]}>
       {/* Extruded building structure */}
       <mesh receiveShadow castShadow>
         <extrudeGeometry args={[shape, extrudeSettings]} />
         <meshStandardMaterial
           color="#334155"
           transparent
-          opacity={0.7}
+          opacity={0.65}
           roughness={0.4}
           metalness={0.1}
           side={THREE.DoubleSide}
         />
       </mesh>
 
-      {/* Roof perimeter line */}
+      {/* Roof perimeter line directly on roof surface */}
       <lineLoop>
         <bufferGeometry
           attach="geometry"
           onUpdate={(geo) => {
-            const points = [...localVertices, localVertices[0]].map((p) => new THREE.Vector3(p.x, p.z, buildingHeight + 0.05));
+            const points = [...localVertices, localVertices[0]].map(
+              (p) => new THREE.Vector3(p.x, -p.z, buildingHeight + 0.02)
+            );
             geo.setFromPoints(points);
           }}
         />
@@ -174,7 +180,9 @@ function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 
             <bufferGeometry
               attach="geometry"
               onUpdate={(geo) => {
-                const points = [...obs, obs[0]].map((p) => new THREE.Vector3(p.x, p.z, buildingHeight + 0.06));
+                const points = [...obs, obs[0]].map(
+                  (p) => new THREE.Vector3(p.x, -p.z, buildingHeight + 0.03)
+                );
                 geo.setFromPoints(points);
               }}
             />
@@ -188,36 +196,51 @@ function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 
 
 /**
  * Measured Solar Panels Layout Layer
+ * Places panels flat on the rooftop, rotated in the exact direction of the layout
  */
 function SolarPanelsLayer({
   localVertices,
   obstaclesLocal,
   buildingHeight = 3.5,
+  elevation = 0,
   customPanels = null,
   centerLat = 12.9716,
-  centerLng = 77.5946
+  centerLng = 77.5946,
+  roofBearingDeg = 0
 }) {
-  // Generate panel placements either from AI Panel Optimizer custom panels or procedural fallback grid
   const panelPlacements = useMemo(() => {
-    // 1. If custom panels calculated by the AI Optimizer are provided, render exact coordinates
+    // 1. If custom panels calculated by the AI Optimizer are provided, render exact coordinates and yaw angle
     if (customPanels && customPanels.length > 0) {
       return customPanels
         .map((p) => {
           if (!p.polygon || p.polygon.length < 4) return null;
-          const pCenterLat = p.polygon.reduce((s, pt) => s + pt[0], 0) / p.polygon.length;
-          const pCenterLng = p.polygon.reduce((s, pt) => s + pt[1], 0) / p.polygon.length;
-          const local = gpsToLocalMeters(pCenterLat, pCenterLng, centerLat, centerLng);
+          const corners3D = p.polygon.map(([lat, lng]) =>
+            gpsToLocalMeters(lat, lng, centerLat, centerLng)
+          );
+          const cx = (corners3D[0].x + corners3D[1].x + corners3D[2].x + corners3D[3].x) / 4;
+          const cz = (corners3D[0].z + corners3D[1].z + corners3D[2].z + corners3D[3].z) / 4;
+
+          const dx = corners3D[1].x - corners3D[0].x;
+          const dz = corners3D[1].z - corners3D[0].z;
+          const angle = Math.atan2(dz, dx);
+          const dimX = Math.hypot(dx, dz);
+
+          const dx2 = corners3D[3].x - corners3D[0].x;
+          const dz2 = corners3D[3].z - corners3D[0].z;
+          const dimZ = Math.hypot(dx2, dz2);
+
           return {
-            x: local.x,
-            z: local.z,
-            width: p.widthMeters || 1.1,
-            length: p.lengthMeters || 2.1,
+            cx,
+            cz,
+            angle,
+            dimX: dimX || 1.1,
+            dimZ: dimZ || 2.1,
           };
         })
         .filter(Boolean);
     }
 
-    // 2. Procedural grid inside polygon
+    // 2. Procedural grid fallback inside polygon aligned with roof angle
     if (localVertices.length < 3) return [];
 
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -233,7 +256,6 @@ function SolarPanelsLayer({
     const panelHeight = 1.0;
     const gap = 0.25;
 
-    // Check point in polygon
     const isInsidePoly = (px, pz, poly) => {
       let inside = false;
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -247,7 +269,6 @@ function SolarPanelsLayer({
 
     for (let x = minX + 1.0; x < maxX - 1.0; x += panelWidth + gap) {
       for (let z = minZ + 1.0; z < maxZ - 1.0; z += panelHeight + gap) {
-        // Test corners
         const corners = [
           { x: x - panelWidth / 2, z: z - panelHeight / 2 },
           { x: x + panelWidth / 2, z: z - panelHeight / 2 },
@@ -258,7 +279,6 @@ function SolarPanelsLayer({
         const allInside = corners.every((c) => isInsidePoly(c.x, c.z, localVertices));
         if (!allInside) continue;
 
-        // Check if intersects any obstacle
         let hitsObstacle = false;
         for (const obs of obstaclesLocal) {
           if (corners.some((c) => isInsidePoly(c.x, c.z, obs))) {
@@ -268,19 +288,30 @@ function SolarPanelsLayer({
         }
 
         if (!hitsObstacle) {
-          panels.push({ x, z, width: panelWidth, length: panelHeight });
+          panels.push({
+            cx: x,
+            cz: z,
+            angle: -(roofBearingDeg * Math.PI) / 180,
+            dimX: panelWidth,
+            dimZ: panelHeight,
+          });
         }
       }
     }
 
     return panels;
-  }, [localVertices, obstaclesLocal, customPanels, centerLat, centerLng]);
+  }, [localVertices, obstaclesLocal, customPanels, centerLat, centerLng, roofBearingDeg]);
 
   return (
-    <group position={[0, buildingHeight + 0.1, 0]}>
+    <group position={[0, buildingHeight + elevation + 0.05, 0]}>
       {panelPlacements.map((panel, idx) => (
-        <mesh key={idx} position={[panel.x, 0, panel.z]} rotation={[-Math.PI / 12, 0, 0]} castShadow>
-          <boxGeometry args={[panel.width ? panel.width * 0.95 : 1.9, 0.05, panel.length ? panel.length * 0.95 : 0.95]} />
+        <mesh
+          key={idx}
+          position={[panel.cx, 0, panel.cz]}
+          rotation={[0, -panel.angle, 0]}
+          castShadow
+        >
+          <boxGeometry args={[panel.dimX * 0.95, 0.04, panel.dimZ * 0.95]} />
           <meshStandardMaterial
             color="#1E3A8A"
             roughness={0.2}
@@ -298,6 +329,7 @@ export default function Model3DCanvas({
   obstacles = [],
   minRotatedRect = null,
   customPanels = null,
+  buildingHeight = 3.5,
   canvasHeight = 'h-80',
   className = ''
 }) {
@@ -319,7 +351,7 @@ export default function Model3DCanvas({
     let blobUrlToRevoke = null;
 
     if (job?.status === 'SUCCEEDED' && job.id) {
-      // 1. Fetch GLB as Blob with auth headers to prevent 401
+      // Fetch GLB as Blob with auth headers to prevent 401
       model3dService
         .fetchModelBlobUrl(job.id)
         .then((blobUrl) => {
@@ -333,7 +365,6 @@ export default function Model3DCanvas({
         .catch((err) => {
           console.warn('Authenticated GLB fetch failed, falling back to direct URL / placeholder:', err);
           if (active) {
-            // Direct URL (if public) or bundled fallback
             setModelGlbUrl(model3dService.getModelUrl(job.id));
           }
         });
@@ -349,17 +380,59 @@ export default function Model3DCanvas({
     };
   }, [job]);
 
+  // Dynamically calculate minimum rotated rectangle if not passed in props
+  const effectiveMinRotatedRect = useMemo(() => {
+    if (minRotatedRect && minRotatedRect.widthMeters > 0) {
+      return minRotatedRect;
+    }
+    if (!polygonCoordinates || polygonCoordinates.length < 3) return null;
+
+    try {
+      const closed = [...polygonCoordinates, polygonCoordinates[0]].map(([lat, lng]) => [lng, lat]);
+      const polyFeature = turf.polygon([closed]);
+
+      let minArea = Infinity;
+      let bestWidth = 0;
+      let bestHeight = 0;
+      let bestBearing = 0;
+
+      for (let angle = 0; angle < 90; angle += 5) {
+        const rotated = turf.transformRotate(polyFeature, angle);
+        const bbox = turf.bbox(rotated);
+        const w = turf.distance([bbox[0], bbox[1]], [bbox[2], bbox[1]], { units: 'meters' });
+        const h = turf.distance([bbox[0], bbox[1]], [bbox[0], bbox[3]], { units: 'meters' });
+        const area = w * h;
+        if (area < minArea) {
+          minArea = area;
+          bestWidth = w;
+          bestHeight = h;
+          bestBearing = angle;
+        }
+      }
+
+      return {
+        widthMeters: Math.round(bestWidth * 10) / 10,
+        heightMeters: Math.round(bestHeight * 10) / 10,
+        areaM2: Math.round(minArea * 10) / 10,
+        bearingDeg: bestBearing,
+      };
+    } catch {
+      return null;
+    }
+  }, [minRotatedRect, polygonCoordinates]);
+
   // Auto-align default footprint to match minimum rotated rectangle
   useEffect(() => {
-    if (minRotatedRect && minRotatedRect.widthMeters > 0) {
-      const dominantDimension = Math.max(minRotatedRect.widthMeters, minRotatedRect.heightMeters);
-      const computedScale = Math.max(0.2, Math.min(10.0, dominantDimension / 10.0));
+    if (effectiveMinRotatedRect && effectiveMinRotatedRect.widthMeters > 0) {
+      const dominantDimension = Math.max(effectiveMinRotatedRect.widthMeters, effectiveMinRotatedRect.heightMeters);
+      // Mock building placeholder has width = 50m; scale so it matches the roof dominant dimension
+      const computedScale = Math.max(0.2, Math.min(10.0, dominantDimension / 50.0));
       setScaleFactor(parseFloat(computedScale.toFixed(2)));
-      if (minRotatedRect.bearingDeg != null) {
-        setRotationDeg(Math.round(minRotatedRect.bearingDeg));
+      if (effectiveMinRotatedRect.bearingDeg != null) {
+        setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
       }
     }
-  }, [minRotatedRect]);
+  }, [effectiveMinRotatedRect]);
 
   // Centroid reference
   const centerLat = useMemo(() => {
@@ -400,19 +473,19 @@ export default function Model3DCanvas({
       <div className={`relative w-full ${canvasHeight} bg-gradient-to-b from-slate-900 to-slate-950`}>
         <CanvasErrorBoundary>
           <Canvas
-            camera={{ position: [0, 25, 35], fov: 45 }}
+            camera={{ position: [0, 35, 45], fov: 45 }}
             shadows
             className="w-full h-full"
           >
-            <ambientLight intensity={0.8} />
+            <ambientLight intensity={0.9} />
             <directionalLight
-              position={[20, 40, 20]}
+              position={[25, 45, 25]}
               intensity={1.5}
               castShadow
               shadow-mapSize-width={1024}
               shadow-mapSize-height={1024}
             />
-            <gridHelper args={[80, 80, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
+            <gridHelper args={[100, 100, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
 
             <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
 
@@ -425,6 +498,7 @@ export default function Model3DCanvas({
                     scale={scaleFactor}
                     rotationDeg={rotationDeg}
                     elevation={elevation}
+                    buildingHeight={buildingHeight}
                   />
                 </Suspense>
               </SceneErrorBoundary>
@@ -435,6 +509,8 @@ export default function Model3DCanvas({
               <MeasuredRooftopLayer
                 localVertices={localVertices}
                 obstaclesLocal={obstaclesLocal}
+                buildingHeight={buildingHeight}
+                elevation={elevation}
               />
             )}
 
@@ -443,9 +519,12 @@ export default function Model3DCanvas({
               <SolarPanelsLayer
                 localVertices={localVertices}
                 obstaclesLocal={obstaclesLocal}
+                buildingHeight={buildingHeight}
+                elevation={elevation}
                 customPanels={customPanels}
                 centerLat={centerLat}
                 centerLng={centerLng}
+                roofBearingDeg={effectiveMinRotatedRect?.bearingDeg || 0}
               />
             )}
           </Canvas>
@@ -535,8 +614,8 @@ export default function Model3DCanvas({
             </div>
             <input
               type="range"
-              min="0.4"
-              max="2.5"
+              min="0.2"
+              max="4.0"
               step="0.05"
               value={scaleFactor}
               onChange={(e) => setScaleFactor(Number(e.target.value))}
