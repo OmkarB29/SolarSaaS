@@ -25,6 +25,14 @@ public class OptimizationEngine {
     public List<OptimizationLayoutDTO> generateOptimizedLayouts(List<List<Double>> polygonGps,
                                                                 PanelDimensionsDTO dimensions,
                                                                 Double annualIrradiance) {
+        return generateOptimizedLayouts(polygonGps, dimensions, annualIrradiance, null, 0.5);
+    }
+
+    public List<OptimizationLayoutDTO> generateOptimizedLayouts(List<List<Double>> polygonGps,
+                                                                PanelDimensionsDTO dimensions,
+                                                                Double annualIrradiance,
+                                                                List<List<List<Double>>> obstaclesGps,
+                                                                Double obstacleBufferMeters) {
         if (polygonGps == null || polygonGps.size() < 3) {
             throw new IllegalArgumentException("Rooftop polygon must have at least 3 GPS coordinates.");
         }
@@ -59,6 +67,22 @@ public class OptimizationEngine {
         // 3. Find primary alignment angle from dominant polygon edge
         double dominantAngleRad = findDominantEdgeAngle(polygonMetric);
 
+        // Convert obstacles to local metric Cartesian coordinates
+        List<List<Point2D>> obstaclesMetric = new ArrayList<>();
+        double totalObstacleArea = 0.0;
+        if (obstaclesGps != null) {
+            for (List<List<Double>> obsPoly : obstaclesGps) {
+                if (obsPoly == null || obsPoly.size() < 3) continue;
+                List<Point2D> obsMetric = new ArrayList<>();
+                for (List<Double> pt : obsPoly) {
+                    obsMetric.add(gpsToMetric(pt.get(0), pt.get(1), centerLat, centerLng));
+                }
+                obstaclesMetric.add(obsMetric);
+                totalObstacleArea += calculatePolygonArea(obsMetric);
+            }
+        }
+        double effectiveBuffer = obstacleBufferMeters != null ? obstacleBufferMeters : 0.5;
+
         // 4. Generate Baseline Unoptimized Layout for comparative benchmarking
         OptimizationLayoutDTO baseline = generateLayoutForMode(
                 "BASELINE",
@@ -75,7 +99,10 @@ public class OptimizationEngine {
                 false, // no smart walkways
                 1420.0,
                 null,
-                roofAreaM2
+                roofAreaM2,
+                obstaclesMetric,
+                effectiveBuffer,
+                totalObstacleArea
         );
 
         // 5. Generate 3 Target Optimization Modes
@@ -94,7 +121,10 @@ public class OptimizationEngine {
                 false,
                 1470.0,
                 baseline,
-                roofAreaM2
+                roofAreaM2,
+                obstaclesMetric,
+                effectiveBuffer,
+                totalObstacleArea
         );
 
         OptimizationLayoutDTO balanced = generateLayoutForMode(
@@ -112,7 +142,10 @@ public class OptimizationEngine {
                 true,  // 0.8m maintenance walkways
                 1540.0,
                 baseline,
-                roofAreaM2
+                roofAreaM2,
+                obstaclesMetric,
+                effectiveBuffer,
+                totalObstacleArea
         );
 
         OptimizationLayoutDTO highEff = generateLayoutForMode(
@@ -130,7 +163,10 @@ public class OptimizationEngine {
                 true,  // 1.0m central & maintenance walkways
                 1620.0,
                 baseline,
-                roofAreaM2
+                roofAreaM2,
+                obstaclesMetric,
+                effectiveBuffer,
+                totalObstacleArea
         );
 
         // Populate Tailored AI Insights for Each Mode
@@ -157,7 +193,10 @@ public class OptimizationEngine {
                                                         boolean includeWalkways,
                                                         double baseYieldKwhPerKwp,
                                                         OptimizationLayoutDTO baseline,
-                                                        double roofAreaM2) {
+                                                        double roofAreaM2,
+                                                        List<List<Point2D>> obstacles,
+                                                        double obstacleBufferMeters,
+                                                        double totalObstacleArea) {
         // Test orientations: Portrait vs Landscape
         List<PanelPlacement> bestPlacements = Collections.emptyList();
         String chosenOrientation = "PORTRAIT";
@@ -166,11 +205,11 @@ public class OptimizationEngine {
 
         // 1. Try Portrait
         List<PanelPlacement> portraitPlacements = placePanelsOnGrid(
-                polygon, baseAngle, pWidth, pLength, marginMeters, gapX, gapY, includeWalkways, "PORTRAIT");
+                polygon, baseAngle, pWidth, pLength, marginMeters, gapX, gapY, includeWalkways, "PORTRAIT", obstacles, obstacleBufferMeters);
 
         // 2. Try Landscape
         List<PanelPlacement> landscapePlacements = placePanelsOnGrid(
-                polygon, baseAngle, pLength, pWidth, marginMeters, gapX, gapY, includeWalkways, "LANDSCAPE");
+                polygon, baseAngle, pLength, pWidth, marginMeters, gapX, gapY, includeWalkways, "LANDSCAPE", obstacles, obstacleBufferMeters);
 
         if (landscapePlacements.size() > portraitPlacements.size() && "MAXIMUM_CAPACITY".equals(modeCode)) {
             bestPlacements = landscapePlacements;
@@ -217,7 +256,8 @@ public class OptimizationEngine {
 
         int panelCount = panelDTOs.size();
         double usedAreaM2 = Math.round(panelCount * dims.getAreaM2() * 100.0) / 100.0;
-        double usableAreaM2 = Math.round(roofAreaM2 * 0.85 * 100.0) / 100.0;
+        double netRoofAreaM2 = Math.max(0.0, roofAreaM2 - totalObstacleArea);
+        double usableAreaM2 = Math.round(netRoofAreaM2 * 0.85 * 100.0) / 100.0;
         double unusedAreaM2 = Math.max(0.0, Math.round((roofAreaM2 - usedAreaM2) * 100.0) / 100.0);
         double utilizationPercent = roofAreaM2 > 0 ? Math.round((usedAreaM2 / roofAreaM2) * 1000.0) / 10.0 : 0.0;
 
@@ -271,7 +311,9 @@ public class OptimizationEngine {
                                                   double gapX,
                                                   double gapY,
                                                   boolean includeWalkways,
-                                                  String orientation) {
+                                                  String orientation,
+                                                  List<List<Point2D>> obstacles,
+                                                  double obstacleBuffer) {
         // Rotate polygon so dominant edge aligns with the X axis
         double cosA = Math.cos(-rotationAngle);
         double sinA = Math.sin(-rotationAngle);
@@ -288,6 +330,20 @@ public class OptimizationEngine {
             maxX = Math.max(maxX, rx);
             minY = Math.min(minY, ry);
             maxY = Math.max(maxY, ry);
+        }
+
+        List<List<Point2D>> rotObstacles = new ArrayList<>();
+        if (obstacles != null) {
+            for (List<Point2D> obs : obstacles) {
+                if (obs == null || obs.size() < 3) continue;
+                List<Point2D> rObs = new ArrayList<>();
+                for (Point2D p : obs) {
+                    double rx = p.x * cosA - p.y * sinA;
+                    double ry = p.x * sinA + p.y * cosA;
+                    rObs.add(new Point2D(rx, ry));
+                }
+                rotObstacles.add(rObs);
+            }
         }
 
         List<PanelPlacement> placements = new ArrayList<>();
@@ -325,7 +381,7 @@ public class OptimizationEngine {
                 Point2D rotCenter = new Point2D(x + panelWidth / 2.0, y + panelLength / 2.0);
 
                 // Check if all 4 corners and center are inside the rotated polygon and satisfy margin
-                if (isPanelValidInsidePolygon(rotCorners, rotCenter, rotPoly, margin)) {
+                if (isPanelValidInsidePolygon(rotCorners, rotCenter, rotPoly, margin) && (rotObstacles.isEmpty() || !isPanelCollidingWithObstacles(rotCorners, rotCenter, rotObstacles, obstacleBuffer))) {
                     // Rotate back to original metric frame
                     Point2D[] origCorners = new Point2D[4];
                     for (int i = 0; i < 4; i++) {
@@ -368,6 +424,100 @@ public class OptimizationEngine {
         }
 
         return true;
+    }
+
+    public boolean isPanelCollidingWithObstacles(Point2D[] corners,
+                                                 Point2D center,
+                                                 List<List<Point2D>> obstacles,
+                                                 double bufferMeters) {
+        if (obstacles == null || obstacles.isEmpty()) {
+            return false;
+        }
+
+        List<Point2D> panelPolygon = List.of(corners[0], corners[1], corners[2], corners[3]);
+        double buffer = Math.max(0.0, bufferMeters);
+
+        for (List<Point2D> obs : obstacles) {
+            if (obs == null || obs.size() < 3) continue;
+
+            // 1. Center inside obstacle
+            if (isPointInPolygon(center.x, center.y, obs)) {
+                return true;
+            }
+
+            // 2. Any corner inside obstacle
+            for (Point2D c : corners) {
+                if (isPointInPolygon(c.x, c.y, obs)) {
+                    return true;
+                }
+            }
+
+            // 3. Any obstacle vertex inside panel
+            for (Point2D op : obs) {
+                if (isPointInPolygon(op.x, op.y, panelPolygon)) {
+                    return true;
+                }
+            }
+
+            // 4. Panel edge intersects obstacle edge
+            for (int i = 0; i < 4; i++) {
+                Point2D p1 = corners[i];
+                Point2D p2 = corners[(i + 1) % 4];
+                int obsSize = obs.size();
+                for (int j = 0; j < obsSize; j++) {
+                    Point2D o1 = obs.get(j);
+                    Point2D o2 = obs.get((j + 1) % obsSize);
+                    if (segmentsIntersect(p1, p2, o1, o2)) {
+                        return true;
+                    }
+                }
+            }
+
+            // 5. Buffer distance violation
+            if (buffer > 0.0) {
+                for (Point2D c : corners) {
+                    if (minDistanceToPolygonEdges(c.x, c.y, obs) < buffer) {
+                        return true;
+                    }
+                }
+                for (Point2D op : obs) {
+                    if (minDistanceToPolygonEdges(op.x, op.y, panelPolygon) < buffer) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public static boolean segmentsIntersect(Point2D p1, Point2D p2, Point2D p3, Point2D p4) {
+        int o1 = orientation(p1, p2, p3);
+        int o2 = orientation(p1, p2, p4);
+        int o3 = orientation(p3, p4, p1);
+        int o4 = orientation(p3, p4, p2);
+
+        if (o1 != o2 && o3 != o4) {
+            return true;
+        }
+
+        if (o1 == 0 && onSegment(p1, p3, p2)) return true;
+        if (o2 == 0 && onSegment(p1, p4, p2)) return true;
+        if (o3 == 0 && onSegment(p3, p1, p4)) return true;
+        if (o4 == 0 && onSegment(p3, p2, p4)) return true;
+
+        return false;
+    }
+
+    private static int orientation(Point2D p, Point2D q, Point2D r) {
+        double val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+        if (Math.abs(val) < 1e-9) return 0;
+        return (val > 0) ? 1 : 2;
+    }
+
+    private static boolean onSegment(Point2D p, Point2D q, Point2D r) {
+        return q.x <= Math.max(p.x, r.x) + 1e-9 && q.x >= Math.min(p.x, r.x) - 1e-9 &&
+               q.y <= Math.max(p.y, r.y) + 1e-9 && q.y >= Math.min(p.y, r.y) - 1e-9;
     }
 
     public boolean isPointInPolygon(double px, double py, List<Point2D> polygon) {

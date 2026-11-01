@@ -54,7 +54,9 @@ public class PanelOptimizerService {
         return optimizationEngine.generateOptimizedLayouts(
                 request.getPolygonCoordinates(),
                 request.getPanelDimensions(),
-                request.getAnnualIrradiance()
+                request.getAnnualIrradiance(),
+                request.getObstacles(),
+                request.getObstacleBufferMeters()
         );
     }
 

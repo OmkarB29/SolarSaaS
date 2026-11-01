@@ -13,6 +13,8 @@ public class OptimizationRequestDTO {
     private Double annualIrradiance;
     private Double solarScore;
     private PanelDimensionsDTO panelDimensions;
+    private List<List<List<Double>>> obstacles;
+    private Double obstacleBufferMeters = 0.5;
 
     public OptimizationRequestDTO() {
     }
@@ -110,5 +112,48 @@ public class OptimizationRequestDTO {
 
     public void setPanelDimensions(PanelDimensionsDTO panelDimensions) {
         this.panelDimensions = panelDimensions;
+    }
+
+    public List<List<List<Double>>> getObstacles() {
+        return obstacles;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void setObstacles(List<?> rawObstacles) {
+        if (rawObstacles == null) {
+            this.obstacles = null;
+            return;
+        }
+        List<List<List<Double>>> parsedObstacles = new java.util.ArrayList<>();
+        for (Object obsObj : rawObstacles) {
+            if (obsObj instanceof List<?> polyList) {
+                List<List<Double>> poly = new java.util.ArrayList<>();
+                for (Object item : polyList) {
+                    if (item instanceof List<?> l && l.size() >= 2) {
+                        double lat = ((Number) l.get(0)).doubleValue();
+                        double lng = ((Number) l.get(1)).doubleValue();
+                        poly.add(List.of(lat, lng));
+                    } else if (item instanceof java.util.Map<?, ?> m) {
+                        Object latObj = m.get("lat") != null ? m.get("lat") : m.get("latitude");
+                        Object lngObj = m.get("lng") != null ? m.get("lng") : m.get("longitude");
+                        if (latObj instanceof Number nLat && lngObj instanceof Number nLng) {
+                            poly.add(List.of(nLat.doubleValue(), nLng.doubleValue()));
+                        }
+                    }
+                }
+                if (!poly.isEmpty()) {
+                    parsedObstacles.add(poly);
+                }
+            }
+        }
+        this.obstacles = parsedObstacles;
+    }
+
+    public Double getObstacleBufferMeters() {
+        return obstacleBufferMeters != null ? obstacleBufferMeters : 0.5;
+    }
+
+    public void setObstacleBufferMeters(Double obstacleBufferMeters) {
+        this.obstacleBufferMeters = obstacleBufferMeters != null ? obstacleBufferMeters : 0.5;
     }
 }

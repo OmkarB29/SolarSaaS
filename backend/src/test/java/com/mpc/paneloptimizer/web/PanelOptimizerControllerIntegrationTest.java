@@ -88,21 +88,25 @@ class PanelOptimizerControllerIntegrationTest {
         solarPotentialRepository.deleteAll();
         reportRepository.deleteAll();
         analysisRepository.deleteAll();
-        userRepository.deleteAll();
+        // Keep users to preserve referential integrity across test classes
 
-        testUser = new User();
-        testUser.setUsername("Optimizer User");
-        testUser.setEmail("optuser@solarsaas.com");
-        testUser.setPasswordHash(passwordEncoder.encode("Password@123"));
-        testUser.setRole("ROLE_USER");
-        testUser = userRepository.save(testUser);
+                testUser = userRepository.findByEmail("optuser@solarsaas.com").orElseGet(() -> {
+            User u = new User();
+            u.setUsername("Optimizer User");
+            u.setEmail("optuser@solarsaas.com");
+            u.setPasswordHash(passwordEncoder.encode("Password@123"));
+            u.setRole("ROLE_USER");
+            return userRepository.save(u);
+        });
 
-        otherUser = new User();
-        otherUser.setUsername("Other User");
-        otherUser.setEmail("other@solarsaas.com");
-        otherUser.setPasswordHash(passwordEncoder.encode("Password@123"));
-        otherUser.setRole("ROLE_USER");
-        otherUser = userRepository.save(otherUser);
+        otherUser = userRepository.findByEmail("other@solarsaas.com").orElseGet(() -> {
+            User u = new User();
+            u.setUsername("Opt Other User");
+            u.setEmail("other@solarsaas.com");
+            u.setPasswordHash(passwordEncoder.encode("Password@123"));
+            u.setRole("ROLE_USER");
+            return userRepository.save(u);
+        });
 
         jwtToken = authenticateAndGetToken("optuser@solarsaas.com", "Password@123");
         otherJwtToken = authenticateAndGetToken("other@solarsaas.com", "Password@123");

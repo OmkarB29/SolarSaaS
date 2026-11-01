@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, Suspense } from 'react';
+import React, { useState, useMemo, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Center } from '@react-three/drei';
 import * as THREE from 'three';
@@ -221,6 +221,18 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
   const [rotationDeg, setRotationDeg] = useState(0);
   const [scaleFactor, setScaleFactor] = useState(1.0);
   const [elevation, setElevation] = useState(0.0);
+
+  // Auto-align default footprint to match minimum rotated rectangle
+  useEffect(() => {
+    if (minRotatedRect && minRotatedRect.widthMeters > 0) {
+      const dominantDimension = Math.max(minRotatedRect.widthMeters, minRotatedRect.heightMeters);
+      const computedScale = Math.max(0.2, Math.min(10.0, dominantDimension / 10.0));
+      setScaleFactor(parseFloat(computedScale.toFixed(2)));
+      if (minRotatedRect.bearingDeg != null) {
+        setRotationDeg(Math.round(minRotatedRect.bearingDeg));
+      }
+    }
+  }, [minRotatedRect]);
 
   // Centroid reference
   const centerLat = useMemo(() => {

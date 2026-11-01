@@ -73,7 +73,7 @@ class Model3DControllerIntegrationTest {
 
         otherUser = userRepository.findByEmail("other3d@solarsaas.com").orElseGet(() -> {
             User u = new User();
-            u.setUsername("Other User");
+            u.setUsername("Model3D Other User");
             u.setEmail("other3d@solarsaas.com");
             u.setPasswordHash(passwordEncoder.encode("Password@123"));
             u.setRole("ROLE_USER");
