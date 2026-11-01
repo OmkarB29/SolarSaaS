@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Center } from '@react-three/drei';
 import * as THREE from 'three';
@@ -11,6 +11,17 @@ import {
   Loader2
 } from 'lucide-react';
 import { model3dService } from '../../services/model3dService';
+
+const getStoredAuth = () => {
+  try {
+    return (
+      JSON.parse(localStorage.getItem('solarscope.auth')) ||
+      JSON.parse(sessionStorage.getItem('solarscope.session'))
+    );
+  } catch {
+    return null;
+  }
+};
 
 const EARTH_RADIUS = 6371000.0;
 
