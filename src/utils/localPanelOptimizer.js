@@ -132,7 +132,7 @@ export const generateLocalOptimizedLayouts = (polygonGps, dimensions = {}, annua
 
         if (allInside) {
           placements.push({
-            centerGps,
+            centerGps: gpsCenter,
             polygon: gpsCorners,
           });
         }

@@ -9,8 +9,7 @@ import MapSelection from './pages/MapSelection';
 import Analysis from './pages/Analysis';
 import SolarPotential from './pages/SolarPotential';
 import PanelOptimizer from './pages/PanelOptimizer';
-import ModelView3D from './pages/ModelView3D';
-import AnalysisHistory from './pages/AnalysisHistory';
+import Model3DView from './pages/Model3DView';
 import MyAnalyses from './pages/MyAnalyses';
 import MyProposals from './pages/MyProposals';
 import Reports from './pages/Reports';
@@ -41,7 +40,7 @@ function App() {
                 <Route path="analysis" element={<Analysis />} />
                 <Route path="solar-potential" element={<SolarPotential />} />
                 <Route path="panel-optimizer" element={<PanelOptimizer />} />
-                <Route path="model-3d" element={<ModelView3D />} />
+                <Route path="model-3d" element={<Model3DView />} />
                 <Route path="my-analyses" element={<MyAnalyses />} />
                 <Route path="analysis-history" element={<MyAnalyses />} />
                 <Route path="my-proposals" element={<MyProposals />} />
