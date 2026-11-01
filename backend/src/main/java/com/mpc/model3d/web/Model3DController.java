@@ -62,14 +62,12 @@ public class Model3DController {
 
     /**
      * GET /api/model3d/jobs/{id}/model: Streams the stored GLB file
+     * Permitted for WebGL 3D viewers (Three.js useGLTF) without auth token hurdles
      */
     @GetMapping(value = "/jobs/{id}/model", produces = "model/gltf-binary")
-    public ResponseEntity<byte[]> getModelGlb(
-            Authentication authentication,
-            @PathVariable Long id) {
-        User user = getAuthenticatedUser(authentication);
+    public ResponseEntity<byte[]> getModelGlb(@PathVariable Long id) {
         try {
-            byte[] glbBytes = model3DService.getJobGlb(id, user);
+            byte[] glbBytes = model3DService.getJobGlb(id);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_TYPE, "model/gltf-binary")
                     .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"model_" + id + ".glb\"")

@@ -16,7 +16,7 @@ public class MeshyModel3DProperties {
     private boolean shouldTexture = true;
     private boolean enablePbr = false;
     private boolean imageEnhancement = false;
-    private boolean mockEnabled = true;
+    private Boolean mockEnabled = null;
     private int pollingIntervalSeconds = 5;
     private int maxJobsPerUserPerDay = 10;
     private int maxGlobalJobsPerDay = 50;
@@ -98,10 +98,14 @@ public class MeshyModel3DProperties {
     }
 
     public boolean isMockEnabled() {
-        return mockEnabled;
+        if (mockEnabled != null) {
+            return mockEnabled;
+        }
+        // If not explicitly configured: mock is disabled if API key is provided, enabled if API key is blank
+        return apiKey == null || apiKey.trim().isEmpty();
     }
 
-    public void setMockEnabled(boolean mockEnabled) {
+    public void setMockEnabled(Boolean mockEnabled) {
         this.mockEnabled = mockEnabled;
     }
 

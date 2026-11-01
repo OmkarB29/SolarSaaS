@@ -138,8 +138,14 @@ public class Model3DService {
         try {
             updateJobStatus(jobId, Model3DStatus.IN_PROGRESS, 15, null, null);
 
-            // ─── MOCK MODE ───
-            if (meshyProperties.isMockEnabled()) {
+            // ─── MOCK MODE EVALUATION ───
+            boolean hasApiKey = meshyProperties.getApiKey() != null && !meshyProperties.getApiKey().trim().isEmpty();
+            boolean isMock = meshyProperties.isMockEnabled();
+            if (hasApiKey && !"true".equalsIgnoreCase(System.getenv("MESHY_MOCK_ENABLED"))) {
+                isMock = false;
+            }
+
+            if (isMock) {
                 log.info("Executing Job #{} in MOCK MODE (zero credits consumed)", jobId);
                 runMockPipeline(jobId);
                 return;
@@ -274,6 +280,15 @@ public class Model3DService {
 
     public List<Model3DJob> listUserJobs(User user) {
         return jobRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+    }
+
+    public byte[] getJobGlb(Long jobId) throws Exception {
+        Model3DJob job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new IllegalArgumentException("Job #" + jobId + " not found."));
+        if (job.getStatus() != Model3DStatus.SUCCEEDED) {
+            throw new IllegalStateException("3D Model is not ready yet. Status: " + job.getStatus());
+        }
+        return glbStorageService.loadGlb(job.getGlbPath());
     }
 
     public byte[] getJobGlb(Long jobId, User user) throws Exception {

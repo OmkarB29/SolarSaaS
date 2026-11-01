@@ -1,16 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Center } from '@react-three/drei';
 import * as THREE from 'three';
 import {
-  Layers,
-  RotateCw,
-  Maximize2,
-  MoveUp,
   AlertCircle,
   Eye,
   EyeOff,
-  Sparkles,
   Info,
   Loader2
 } from 'lucide-react';
@@ -22,6 +17,66 @@ function gpsToLocalMeters(lat, lng, centerLat, centerLng) {
   const y = (lat - centerLat) * (Math.PI / 180.0) * EARTH_RADIUS;
   const x = (lng - centerLng) * (Math.PI / 180.0) * EARTH_RADIUS * Math.cos((centerLat * Math.PI) / 180.0);
   return { x, z: -y };
+}
+
+/**
+ * Catches errors inside React Three Fiber 3D scene (must return Three elements)
+ */
+class SceneErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.warn('3D Model component failed to load inside Canvas scene:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || <group />;
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Outer Error Boundary around Canvas (returns standard HTML)
+ */
+class CanvasErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.warn('Canvas Error Boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <div className="flex flex-col items-center justify-center w-full h-80 bg-slate-950 p-4 text-center">
+            <AlertCircle size={28} className="text-amber-400 mb-2" />
+            <span className="text-xs font-semibold text-white">3D Viewport Encountered an Issue</span>
+            <span className="text-2xs text-slate-400 mt-1 max-w-sm">
+              The 3D model could not be displayed, but your measured CAD geometry and panel optimization calculations remain completely intact.
+            </span>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /**
@@ -222,6 +277,44 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
   const [scaleFactor, setScaleFactor] = useState(1.0);
   const [elevation, setElevation] = useState(0.0);
 
+  // Model URL state with object blob resolution and error fallback
+  const [modelGlbUrl, setModelGlbUrl] = useState('/models/mock-building.glb');
+
+  useEffect(() => {
+    let active = true;
+    let blobUrlToRevoke = null;
+
+    if (job?.status === 'SUCCEEDED' && job.id) {
+      // 1. Fetch GLB as Blob with auth headers to prevent 401
+      model3dService
+        .fetchModelBlobUrl(job.id)
+        .then((blobUrl) => {
+          if (active) {
+            blobUrlToRevoke = blobUrl;
+            setModelGlbUrl(blobUrl);
+          } else {
+            URL.revokeObjectURL(blobUrl);
+          }
+        })
+        .catch((err) => {
+          console.warn('Authenticated GLB fetch failed, falling back to direct URL / placeholder:', err);
+          if (active) {
+            // Direct URL (if public) or bundled fallback
+            setModelGlbUrl(model3dService.getModelUrl(job.id));
+          }
+        });
+    } else {
+      setModelGlbUrl('/models/mock-building.glb');
+    }
+
+    return () => {
+      active = false;
+      if (blobUrlToRevoke) {
+        URL.revokeObjectURL(blobUrlToRevoke);
+      }
+    };
+  }, [job]);
+
   // Auto-align default footprint to match minimum rotated rectangle
   useEffect(() => {
     if (minRotatedRect && minRotatedRect.widthMeters > 0) {
@@ -259,15 +352,6 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
     );
   }, [obstacles, centerLat, centerLng]);
 
-  // Model URL
-  const modelGlbUrl = useMemo(() => {
-    if (job?.status === 'SUCCEEDED' && job.id) {
-      return model3dService.getModelUrl(job.id);
-    }
-    // Fallback bundled placeholder
-    return '/models/mock-building.glb';
-  }, [job]);
-
   return (
     <div className="flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
       {/* ─── MANDATORY AI DISCLAIMER BANNER ─── */}
@@ -280,51 +364,55 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
 
       {/* ─── 3D VIEWPORT CANVAS ─── */}
       <div className="relative w-full h-80 bg-gradient-to-b from-slate-900 to-slate-950">
-        <Canvas
-          camera={{ position: [0, 25, 35], fov: 45 }}
-          shadows
-          className="w-full h-full"
-        >
-          <ambientLight intensity={0.8} />
-          <directionalLight
-            position={[20, 40, 20]}
-            intensity={1.5}
-            castShadow
-            shadow-mapSize-width={1024}
-            shadow-mapSize-height={1024}
-          />
-          <gridHelper args={[80, 80, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
+        <CanvasErrorBoundary>
+          <Canvas
+            camera={{ position: [0, 25, 35], fov: 45 }}
+            shadows
+            className="w-full h-full"
+          >
+            <ambientLight intensity={0.8} />
+            <directionalLight
+              position={[20, 40, 20]}
+              intensity={1.5}
+              castShadow
+              shadow-mapSize-width={1024}
+              shadow-mapSize-height={1024}
+            />
+            <gridHelper args={[80, 80, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
 
-          <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+            <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
 
-          {/* Layer 1: AI Generated Model */}
-          {showAiModel && (
-            <Suspense fallback={null}>
-              <GlbMeshModel
-                url={modelGlbUrl}
-                scale={scaleFactor}
-                rotationDeg={rotationDeg}
-                elevation={elevation}
+            {/* Layer 1: AI Generated Model (Protected with SceneErrorBoundary) */}
+            {showAiModel && (
+              <SceneErrorBoundary fallback={<group />}>
+                <Suspense fallback={null}>
+                  <GlbMeshModel
+                    url={modelGlbUrl}
+                    scale={scaleFactor}
+                    rotationDeg={rotationDeg}
+                    elevation={elevation}
+                  />
+                </Suspense>
+              </SceneErrorBoundary>
+            )}
+
+            {/* Layer 2: Measured Roof Boundary & Obstacles */}
+            {showMeasuredBoundary && (
+              <MeasuredRooftopLayer
+                localVertices={localVertices}
+                obstaclesLocal={obstaclesLocal}
               />
-            </Suspense>
-          )}
+            )}
 
-          {/* Layer 2: Measured Roof Boundary & Obstacles */}
-          {showMeasuredBoundary && (
-            <MeasuredRooftopLayer
-              localVertices={localVertices}
-              obstaclesLocal={obstaclesLocal}
-            />
-          )}
-
-          {/* Layer 3: Measured Solar Panel Layout */}
-          {showPanelLayout && (
-            <SolarPanelsLayer
-              localVertices={localVertices}
-              obstaclesLocal={obstaclesLocal}
-            />
-          )}
-        </Canvas>
+            {/* Layer 3: Measured Solar Panel Layout */}
+            {showPanelLayout && (
+              <SolarPanelsLayer
+                localVertices={localVertices}
+                obstaclesLocal={obstaclesLocal}
+              />
+            )}
+          </Canvas>
+        </CanvasErrorBoundary>
 
         {/* Loading Progress Overlay */}
         {job && job.status === 'IN_PROGRESS' && (

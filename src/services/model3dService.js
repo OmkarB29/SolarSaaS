@@ -62,6 +62,21 @@ export const model3dService = {
   },
 
   /**
+   * Fetch GLB binary as a Blob Object URL with authentication headers if available
+   */
+  async fetchModelBlobUrl(jobId) {
+    const token = getStoredAuth()?.token;
+    const res = await fetch(this.getModelUrl(jobId), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to download 3D GLB model (${res.status})`);
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  /**
    * List all 3D jobs for the logged in user
    */
   async listUserJobs() {

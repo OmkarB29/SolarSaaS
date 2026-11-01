@@ -81,7 +81,7 @@ class Model3DControllerIntegrationTest {
         });
 
         jwtToken = authenticateAndGetToken("modeluser@solarsaas.com", "Password@123");
-                otherJwtToken = authenticateAndGetToken("other3d@solarsaas.com", "Password@123");
+        otherJwtToken = authenticateAndGetToken("other3d@solarsaas.com", "Password@123");
     }
 
     @org.junit.jupiter.api.AfterEach
@@ -98,6 +98,7 @@ class Model3DControllerIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+
         return objectMapper.readTree(response).get("token").asText();
     }
 
@@ -175,5 +176,22 @@ class Model3DControllerIntegrationTest {
         mockMvc.perform(get("/api/model3d/jobs/" + job.getId())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + otherJwtToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedClientCanStreamSucceededModelGlb() throws Exception {
+        Model3DJob job = new Model3DJob();
+        job.setUser(testUser);
+        job.setPolygonHash("hash_public_stream");
+        job.setPolygonJson("[[12.97, 77.59]]");
+        job.setStatus(Model3DStatus.SUCCEEDED);
+        job.setProgress(100);
+        job.setImageSource("GOOGLE_STATIC");
+        job.setGlbPath("placeholder"); // GlbStorageService returns bundled mock glb when placeholder path is used
+        job.setCreatedAt(Instant.now());
+        job = jobRepository.save(job);
+
+        mockMvc.perform(get("/api/model3d/jobs/" + job.getId() + "/model"))
+                .andExpect(status().isOk());
     }
 }
