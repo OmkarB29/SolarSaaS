@@ -327,6 +327,68 @@ This project demonstrates practical experience with:
 
 ---
 
+---
+
+# 🏢 3D Rooftop CAD Selection & Meshy AI 3D Pipeline
+
+### 1. Overview
+The **3D Rooftop CAD & Meshy AI Pipeline** enables users to view photorealistic 3D maps, delineate roof boundaries and exclusion zones (such as HVAC chillers, water tanks, and stairwell rooms), inspect live Turf.js metrics (gross area, net usable area, perimeter, dominant bearing, and minimum rotated rectangle), and generate interactive 3D visual models using Meshy AI (`meshy-7.1`). The measured metric geometry is fed directly into the Obstacle-Aware Solar Panel Optimizer to guarantee accurate panel counts and placement.
+
+### 2. Environment Variables & Setup
+Copy `.env.example` to `.env` and configure:
+```bash
+# Frontend Key (Browser-Only, Referrer-restricted to localhost:5173 and your domain)
+VITE_GOOGLE_MAPS_BROWSER_KEY=your_google_maps_browser_key
+
+# Backend Keys (Server-Only, never exposed to client)
+GOOGLE_MAPS_SERVER_KEY=your_google_maps_server_key
+MESHY_API_KEY=your_meshy_api_key
+
+# Execution Mode (Defaults to true for zero credit cost)
+MESHY_MOCK_ENABLED=true
+ROOFTOP_IMAGERY_GOOGLE_STATIC_ENABLED=false
+ROOFTOP_STORAGE_GLB_DIR=uploads/models3d
+```
+
+> [!WARNING]
+> **Git Tracking of `.env`**: A previous commit in the project's repository history tracked `.env`. The project adheres to strict key hygiene: real production secrets must never be committed. Follow git best practices or environment variable injection (e.g. Docker / Kubernetes secrets) in production.
+
+### 3. How to Run in Mock Mode (Zero Credit Cost)
+1. In `backend/src/main/resources/application.properties` (or your local environment), keep:
+   ```properties
+   meshy.mock-enabled=true
+   ```
+2. Start the backend:
+   ```bash
+   cd backend
+   mvn spring-boot:run
+   ```
+3. Start the frontend:
+   ```bash
+   npm run dev
+   ```
+4. Navigate to `/model-3d` ("3D Model View" in sidebar).
+5. Draw rooftop polygon points and mark obstacles.
+6. Click **Generate 3D Model (Meshy AI)**: The backend will simulate generation progress and instantly serve the bundled high-resolution box building GLB (`mock-building.glb`) with **zero API credits consumed**.
+
+### 4. How to Switch to Real Mode
+1. Ensure your Meshy account has available credits (obtain an API key from [Meshy AI](https://meshy.ai)).
+2. Set in your environment:
+   ```bash
+   MESHY_MOCK_ENABLED=false
+   MESHY_API_KEY=msy_your_real_key_here
+   ```
+3. Supply an aerial/drone image via the uploaded image provider or configure legal imagery access.
+4. Restart the Spring Boot backend. The backend will invoke `POST https://api.meshy.ai/openapi/v1/image-to-3d` using model `meshy-7.1`, poll progress asynchronously according to `Retry-After` headers, and automatically cache the resulting GLB file to `uploads/models3d/` to prevent asset expiration.
+
+### 5. Known Limitations & Documented Risks
+* **Measured Geometry vs. AI Mesh Primacy**: AI-generated 3D meshes (Meshy AI) possess arbitrary orientation, scale, and surface irregularities without real-world metric dimensions. Consequently, **all panel counts, capacities, setbacks, and generation figures come exclusively from measured metric geometry** (via equirectangular projections in metres), never from the AI mesh.
+* **Google Maps Terms of Service (Licensing)**: Google Maps Platform Terms of Service (Sections 3.2.3 and 3.2.4) prohibit scraping, capturing, or creating derivative 3D meshes using Google Maps imagery without an explicit Enterprise agreement. To remain fully compliant, `rooftop.imagery.google-static.enabled` is defaulted to `false`, and users can provide their own aerial/drone imagery via `UploadedImageProvider`.
+* **3-Day Asset Retention**: Meshy non-enterprise plans retain generated models on signed URLs for only ~72 hours (3 days). SolarSaaS defends against asset loss by immediately downloading and persisting the GLB locally in `uploads/models3d/` as soon as the task status transitions to `SUCCEEDED`.
+* **3D Photorealistic Tiles Coverage**: Google Photorealistic 3D Maps tiles require hardware acceleration and WebGL2. In areas without 3D tile coverage or on unsupported devices, SolarSaaS automatically falls back to an interactive 2D Google Satellite view with editable polygon vertices.
+
+---
+
 # Author
 
 **Omkar Birajdar**

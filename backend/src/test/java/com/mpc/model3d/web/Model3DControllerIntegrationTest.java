@@ -81,7 +81,12 @@ class Model3DControllerIntegrationTest {
         });
 
         jwtToken = authenticateAndGetToken("modeluser@solarsaas.com", "Password@123");
-        otherJwtToken = authenticateAndGetToken("other3d@solarsaas.com", "Password@123");
+                otherJwtToken = authenticateAndGetToken("other3d@solarsaas.com", "Password@123");
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        jobRepository.deleteAll();
     }
 
     private String authenticateAndGetToken(String email, String password) throws Exception {
