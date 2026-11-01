@@ -8,9 +8,12 @@ import {
   Eye,
   EyeOff,
   Info,
-  Loader2
+  Loader2,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { model3dService } from '../../services/model3dService';
+import { fetchSolarDataLayers, fetchGeoTiffArrayBuffer, parseSolarDsm } from '../../utils/solarDsmParser';
 
 const getStoredAuth = () => {
   try {
@@ -117,8 +120,6 @@ function GlbMeshModel({ url, scale, rotationDeg, elevation, buildingHeight = 3.5
  */
 function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5, elevation = 0 }) {
   // Construct 2D Three.Shape for the roof boundary
-  // Note: Three.js ExtrudeGeometry rotated by [-Math.PI / 2, 0, 0] maps (u, v) -> (u, depth, -v).
-  // Using v = -z ensures 3D Z = -(-z) = +z.
   const shape = useMemo(() => {
     if (localVertices.length < 3) return null;
     const s = new THREE.Shape();
@@ -207,7 +208,7 @@ function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 
 
 /**
  * Measured Solar Panels Layout Layer
- * Places panels flat on the rooftop, rotated in the exact direction of the layout
+ * Places panels coplanar flat on the rooftop using the unified metric height grid
  */
 function SolarPanelsLayer({
   localVertices,
@@ -217,7 +218,8 @@ function SolarPanelsLayer({
   customPanels = null,
   centerLat = 12.9716,
   centerLng = 77.5946,
-  roofBearingDeg = 0
+  roofBearingDeg = 0,
+  sampleHeight = null,
 }) {
   const panelPlacements = useMemo(() => {
     // 1. If custom panels calculated by the AI Optimizer are provided, render exact coordinates and yaw angle
@@ -254,18 +256,23 @@ function SolarPanelsLayer({
     // 2. Procedural grid fallback inside polygon aligned with roof angle
     if (localVertices.length < 3) return [];
 
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    localVertices.forEach((p) => {
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minZ = Math.min(minZ, p.z);
-      maxZ = Math.max(maxZ, p.z);
-    });
+    const angleRad = (roofBearingDeg * Math.PI) / 180.0;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
 
-    const panels = [];
-    const panelWidth = 2.0;
-    const panelHeight = 1.0;
-    const gap = 0.25;
+    // Rotate local vertices into roof-aligned coordinate system (u, v)
+    const rotVertices = localVertices.map((p) => ({
+      u: p.x * cosA - p.z * sinA,
+      v: p.x * sinA + p.z * cosA,
+    }));
+
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    rotVertices.forEach((p) => {
+      minU = Math.min(minU, p.u);
+      maxU = Math.max(maxU, p.u);
+      minV = Math.min(minV, p.v);
+      maxV = Math.max(maxV, p.v);
+    });
 
     const isInsidePoly = (px, pz, poly) => {
       let inside = false;
@@ -278,14 +285,27 @@ function SolarPanelsLayer({
       return inside;
     };
 
-    for (let x = minX + 1.0; x < maxX - 1.0; x += panelWidth + gap) {
-      for (let z = minZ + 1.0; z < maxZ - 1.0; z += panelHeight + gap) {
+    const panels = [];
+    const panelWidth = 2.0;
+    const panelHeight = 1.0;
+    const gap = 0.25;
+
+    for (let u = minU + 0.8; u + panelWidth <= maxU - 0.8; u += panelWidth + gap) {
+      for (let v = minV + 0.8; v + panelHeight <= maxV - 0.8; v += panelHeight + gap) {
+        const cu = u + panelWidth / 2;
+        const cv = v + panelHeight / 2;
+        const cx = cu * cosA + cv * sinA;
+        const cz = -cu * sinA + cv * cosA;
+
         const corners = [
-          { x: x - panelWidth / 2, z: z - panelHeight / 2 },
-          { x: x + panelWidth / 2, z: z - panelHeight / 2 },
-          { x: x + panelWidth / 2, z: z + panelHeight / 2 },
-          { x: x - panelWidth / 2, z: z + panelHeight / 2 },
-        ];
+          { u, v },
+          { u: u + panelWidth, v },
+          { u: u + panelWidth, v: v + panelHeight },
+          { u, v: v + panelHeight },
+        ].map((c) => ({
+          x: c.u * cosA + c.v * sinA,
+          z: -c.u * sinA + c.v * cosA,
+        }));
 
         const allInside = corners.every((c) => isInsidePoly(c.x, c.z, localVertices));
         if (!allInside) continue;
@@ -300,9 +320,9 @@ function SolarPanelsLayer({
 
         if (!hitsObstacle) {
           panels.push({
-            cx: x,
-            cz: z,
-            angle: -(roofBearingDeg * Math.PI) / 180,
+            cx,
+            cz,
+            angle: -angleRad,
             dimX: panelWidth,
             dimZ: panelHeight,
           });
@@ -314,22 +334,25 @@ function SolarPanelsLayer({
   }, [localVertices, obstaclesLocal, customPanels, centerLat, centerLng, roofBearingDeg]);
 
   return (
-    <group position={[0, buildingHeight + elevation + 0.05, 0]}>
-      {panelPlacements.map((panel, idx) => (
-        <mesh
-          key={idx}
-          position={[panel.cx, 0, panel.cz]}
-          rotation={[0, -panel.angle, 0]}
-          castShadow
-        >
-          <boxGeometry args={[panel.dimX * 0.95, 0.04, panel.dimZ * 0.95]} />
-          <meshStandardMaterial
-            color="#1E3A8A"
-            roughness={0.2}
-            metalness={0.8}
-          />
-        </mesh>
-      ))}
+    <group position={[0, elevation, 0]}>
+      {panelPlacements.map((panel, idx) => {
+        const panelHeightAboveGround = (sampleHeight ? sampleHeight(panel.cx, panel.cz) : buildingHeight) + 0.05;
+        return (
+          <mesh
+            key={idx}
+            position={[panel.cx, panelHeightAboveGround, panel.cz]}
+            rotation={[0, -panel.angle, 0]}
+            castShadow
+          >
+            <boxGeometry args={[panel.dimX * 0.95, 0.04, panel.dimZ * 0.95]} />
+            <meshStandardMaterial
+              color="#1E3A8A"
+              roughness={0.2}
+              metalness={0.8}
+            />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
@@ -360,8 +383,163 @@ export default function Model3DCanvas({
   const [modelError, setModelError] = useState(null);
   const [meshSizeMb, setMeshSizeMb] = useState(null);
 
+  // Google Solar DSM State (Master Prompt Phase 7, Step B1)
+  const [dsmStatus, setDsmStatus] = useState('idle'); // 'idle' | 'loading' | 'covered' | 'uncovered' | 'error'
+  const [dsmMetadata, setDsmMetadata] = useState(null);
+  const [dsmData, setDsmData] = useState(null);
+
+  // Centroid reference
+  const centerLat = useMemo(() => {
+    if (!polygonCoordinates || polygonCoordinates.length === 0) return 12.9716;
+    return polygonCoordinates.reduce((s, p) => s + p[0], 0) / polygonCoordinates.length;
+  }, [polygonCoordinates]);
+
+  const centerLng = useMemo(() => {
+    if (!polygonCoordinates || polygonCoordinates.length === 0) return 77.5946;
+    return polygonCoordinates.reduce((s, p) => s + p[1], 0) / polygonCoordinates.length;
+  }, [polygonCoordinates]);
+
+  // Dynamically calculate minimum rotated rectangle if not passed in props
+  const effectiveMinRotatedRect = useMemo(() => {
+    if (minRotatedRect && minRotatedRect.widthMeters > 0) {
+      return minRotatedRect;
+    }
+    if (!polygonCoordinates || polygonCoordinates.length < 3) return null;
+
+    try {
+      const closed = [...polygonCoordinates, polygonCoordinates[0]].map(([lat, lng]) => [lng, lat]);
+      const polyFeature = turf.polygon([closed]);
+
+      let minArea = Infinity;
+      let bestWidth = 0;
+      let bestHeight = 0;
+      let bestBearing = 0;
+
+      for (let angle = 0; angle < 90; angle += 5) {
+        const rotated = turf.transformRotate(polyFeature, angle);
+        const bbox = turf.bbox(rotated);
+        const w = turf.distance([bbox[0], bbox[1]], [bbox[2], bbox[1]], { units: 'meters' });
+        const h = turf.distance([bbox[0], bbox[1]], [bbox[0], bbox[3]], { units: 'meters' });
+        const area = w * h;
+        if (area < minArea) {
+          minArea = area;
+          bestWidth = w;
+          bestHeight = h;
+          bestBearing = angle;
+        }
+      }
+
+      return {
+        widthMeters: Math.round(bestWidth * 10) / 10,
+        heightMeters: Math.round(bestHeight * 10) / 10,
+        areaM2: Math.round(minArea * 10) / 10,
+        bearingDeg: bestBearing,
+      };
+    } catch {
+      return null;
+    }
+  }, [minRotatedRect, polygonCoordinates]);
+
+  // Auto-align default footprint to match minimum rotated rectangle
+  useEffect(() => {
+    if (effectiveMinRotatedRect && effectiveMinRotatedRect.widthMeters > 0) {
+      const dominantDimension = Math.max(effectiveMinRotatedRect.widthMeters, effectiveMinRotatedRect.heightMeters);
+      const computedScale = Math.max(0.2, Math.min(10.0, dominantDimension / 50.0));
+      setScaleFactor(parseFloat(computedScale.toFixed(2)));
+      if (effectiveMinRotatedRect.bearingDeg != null) {
+        setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
+      }
+    }
+  }, [effectiveMinRotatedRect]);
+
+  // Google Solar DSM Query & Ingestion
+  useEffect(() => {
+    let isCancelled = false;
+    if (!centerLat || !centerLng || !polygonCoordinates || polygonCoordinates.length < 3) return;
+
+    async function checkDsmCoverage() {
+      setDsmStatus('loading');
+      const radius = Math.max(15, Math.min(100, (effectiveMinRotatedRect?.widthMeters || 40) / 2 + 10));
+
+      const res = await fetchSolarDataLayers(centerLat, centerLng, radius);
+      if (isCancelled) return;
+
+      if (res.isCovered && res.data?.dsmUrl) {
+        try {
+          const dsmBuffer = await fetchGeoTiffArrayBuffer(res.data.dsmUrl);
+          let maskBuffer = null;
+          if (res.data.maskUrl) {
+            maskBuffer = await fetchGeoTiffArrayBuffer(res.data.maskUrl).catch(() => null);
+          }
+          const parsed = await parseSolarDsm({
+            dsmBuffer,
+            maskBuffer,
+            centerLat,
+            centerLng,
+            imageryQuality: res.data.imageryQuality,
+            imageryDate: res.data.imageryProcessedDate
+              ? `${res.data.imageryProcessedDate.year}-${res.data.imageryProcessedDate.month}`
+              : null,
+          });
+          if (!isCancelled) {
+            setDsmData(parsed);
+            setDsmMetadata(parsed.metadata);
+            setDsmStatus('covered');
+          }
+        } catch (err) {
+          console.warn('[Model3DCanvas] DSM GeoTIFF decode failed, falling back:', err);
+          if (!isCancelled) setDsmStatus('uncovered');
+        }
+      } else {
+        if (!isCancelled) setDsmStatus('uncovered');
+      }
+    }
+
+    checkDsmCoverage();
+    return () => {
+      isCancelled = true;
+    };
+  }, [centerLat, centerLng, polygonCoordinates, effectiveMinRotatedRect]);
+
+  // Unified Metric Height Grid in LOCAL METRES around polygon centroid
+  const heightGrid = useMemo(() => {
+    if (dsmStatus === 'covered' && dsmData?.sampleHeight) {
+      return {
+        source: 'Google Solar DSM',
+        sampleHeight: dsmData.sampleHeight,
+        metadata: dsmMetadata,
+      };
+    }
+    if (modelStatus === 'ready' && job?.status === 'SUCCEEDED') {
+      return {
+        source: 'Meshy AI',
+        sampleHeight: () => buildingHeight,
+        metadata: {
+          jobId: job.id,
+          credits: job.consumedCredits || 30,
+          meshSizeMb,
+        },
+      };
+    }
+    return {
+      source: 'Parametric',
+      sampleHeight: () => buildingHeight,
+      metadata: { height: buildingHeight },
+    };
+  }, [dsmStatus, dsmData, dsmMetadata, modelStatus, job, buildingHeight, meshSizeMb]);
+
   // Active geometry source badge resolution
   const activeGeometrySource = useMemo(() => {
+    if (dsmStatus === 'covered' && dsmMetadata) {
+      return {
+        name: 'Google Solar DSM',
+        badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        dotClass: 'bg-emerald-400',
+        jobId: null,
+        credits: 0,
+        metaText: `Quality: ${dsmMetadata.imageryQuality} | Pixel: ${dsmMetadata.pixelSizeMeters}m | Valid: ${dsmMetadata.validPixelPercent}%`,
+      };
+    }
     if (job?.status === 'SUCCEEDED' || modelStatus === 'ready') {
       const isMeshy = job?.consumedCredits > 0 || job?.meshyTaskId || (job?.modelUrl && job.modelUrl.includes('meshy'));
       if (isMeshy) {
@@ -371,6 +549,7 @@ export default function Model3DCanvas({
           dotClass: 'bg-emerald-400',
           jobId: job?.id,
           credits: job?.consumedCredits || 30,
+          metaText: meshSizeMb ? `${meshSizeMb} MB` : null,
         };
       }
       return {
@@ -379,6 +558,7 @@ export default function Model3DCanvas({
         dotClass: 'bg-amber-400',
         jobId: job?.id,
         credits: 0,
+        metaText: null,
       };
     }
     if (job?.status === 'IN_PROGRESS' || job?.status === 'PENDING') {
@@ -388,6 +568,7 @@ export default function Model3DCanvas({
         dotClass: 'bg-blue-400 animate-ping',
         jobId: job?.id,
         credits: job?.consumedCredits || 0,
+        metaText: `${job.progress || 10}%`,
       };
     }
     return {
@@ -396,8 +577,9 @@ export default function Model3DCanvas({
       dotClass: 'bg-slate-400',
       jobId: null,
       credits: 0,
+      metaText: dsmStatus === 'uncovered' ? 'Solar DSM Uncovered (Fallback)' : `Height: ${buildingHeight}m`,
     };
-  }, [job, modelStatus]);
+  }, [dsmStatus, dsmMetadata, job, modelStatus, meshSizeMb, buildingHeight]);
 
   // Robust Authenticated GLB Download & Blob URL Generation
   const loadGlbModel = useCallback(async (jobToLoad) => {
@@ -472,71 +654,6 @@ export default function Model3DCanvas({
     };
   }, [job, loadGlbModel]);
 
-  // Dynamically calculate minimum rotated rectangle if not passed in props
-  const effectiveMinRotatedRect = useMemo(() => {
-    if (minRotatedRect && minRotatedRect.widthMeters > 0) {
-      return minRotatedRect;
-    }
-    if (!polygonCoordinates || polygonCoordinates.length < 3) return null;
-
-    try {
-      const closed = [...polygonCoordinates, polygonCoordinates[0]].map(([lat, lng]) => [lng, lat]);
-      const polyFeature = turf.polygon([closed]);
-
-      let minArea = Infinity;
-      let bestWidth = 0;
-      let bestHeight = 0;
-      let bestBearing = 0;
-
-      for (let angle = 0; angle < 90; angle += 5) {
-        const rotated = turf.transformRotate(polyFeature, angle);
-        const bbox = turf.bbox(rotated);
-        const w = turf.distance([bbox[0], bbox[1]], [bbox[2], bbox[1]], { units: 'meters' });
-        const h = turf.distance([bbox[0], bbox[1]], [bbox[0], bbox[3]], { units: 'meters' });
-        const area = w * h;
-        if (area < minArea) {
-          minArea = area;
-          bestWidth = w;
-          bestHeight = h;
-          bestBearing = angle;
-        }
-      }
-
-      return {
-        widthMeters: Math.round(bestWidth * 10) / 10,
-        heightMeters: Math.round(bestHeight * 10) / 10,
-        areaM2: Math.round(minArea * 10) / 10,
-        bearingDeg: bestBearing,
-      };
-    } catch {
-      return null;
-    }
-  }, [minRotatedRect, polygonCoordinates]);
-
-  // Auto-align default footprint to match minimum rotated rectangle
-  useEffect(() => {
-    if (effectiveMinRotatedRect && effectiveMinRotatedRect.widthMeters > 0) {
-      const dominantDimension = Math.max(effectiveMinRotatedRect.widthMeters, effectiveMinRotatedRect.heightMeters);
-      // Mock building placeholder has width = 50m; scale so it matches the roof dominant dimension
-      const computedScale = Math.max(0.2, Math.min(10.0, dominantDimension / 50.0));
-      setScaleFactor(parseFloat(computedScale.toFixed(2)));
-      if (effectiveMinRotatedRect.bearingDeg != null) {
-        setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
-      }
-    }
-  }, [effectiveMinRotatedRect]);
-
-  // Centroid reference
-  const centerLat = useMemo(() => {
-    if (!polygonCoordinates || polygonCoordinates.length === 0) return 12.9716;
-    return polygonCoordinates.reduce((s, p) => s + p[0], 0) / polygonCoordinates.length;
-  }, [polygonCoordinates]);
-
-  const centerLng = useMemo(() => {
-    if (!polygonCoordinates || polygonCoordinates.length === 0) return 77.5946;
-    return polygonCoordinates.reduce((s, p) => s + p[1], 0) / polygonCoordinates.length;
-  }, [polygonCoordinates]);
-
   // Convert polygon vertices to local metric coordinates
   const localVertices = useMemo(() => {
     if (!polygonCoordinates || polygonCoordinates.length < 3) return [];
@@ -606,7 +723,7 @@ export default function Model3DCanvas({
               />
             )}
 
-            {/* Layer 3: Measured Solar Panel Layout (Synchronized with AI Panel Optimizer) */}
+            {/* Layer 3: Measured Solar Panel Layout (Synchronized with AI Panel Optimizer & Height Grid) */}
             {showPanelLayout && (
               <SolarPanelsLayer
                 localVertices={localVertices}
@@ -617,14 +734,15 @@ export default function Model3DCanvas({
                 centerLat={centerLat}
                 centerLng={centerLng}
                 roofBearingDeg={effectiveMinRotatedRect?.bearingDeg || 0}
+                sampleHeight={heightGrid.sampleHeight}
               />
             )}
           </Canvas>
         </CanvasErrorBoundary>
 
         {/* Active Geometry Source Badge (Master Prompt Phase 7 Requirement 5) */}
-        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5 pointer-events-auto">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-md shadow-xl text-xs font-semibold ${activeGeometrySource.badgeClass}`}>
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5 pointer-events-auto max-w-md">
+          <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-md shadow-xl text-xs font-semibold ${activeGeometrySource.badgeClass}`}>
             <span className={`w-2 h-2 rounded-full ${activeGeometrySource.dotClass}`} />
             <span>Source: <strong>{activeGeometrySource.name}</strong></span>
             {activeGeometrySource.jobId && (
@@ -632,15 +750,24 @@ export default function Model3DCanvas({
                 Job #{activeGeometrySource.jobId}
               </span>
             )}
-            <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
-              {activeGeometrySource.credits} cr
-            </span>
-            {meshSizeMb && modelStatus === 'ready' && (
+            {activeGeometrySource.credits > 0 && (
               <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
-                {meshSizeMb} MB
+                {activeGeometrySource.credits} cr
+              </span>
+            )}
+            {activeGeometrySource.metaText && (
+              <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
+                {activeGeometrySource.metaText}
               </span>
             )}
           </div>
+
+          {dsmStatus === 'loading' && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-950/80 border border-blue-800 text-blue-300 text-2xs backdrop-blur-md">
+              <Loader2 size={12} className="animate-spin text-blue-400" />
+              <span>Checking Google Solar DSM coverage...</span>
+            </div>
+          )}
 
           {modelStatus === 'downloading' && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-950/80 border border-blue-800 text-blue-300 text-2xs backdrop-blur-md">

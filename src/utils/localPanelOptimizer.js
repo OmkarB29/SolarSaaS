@@ -49,7 +49,7 @@ const findDominantEdgeAngle = (poly) => {
   return dominantAngle;
 };
 
-export const generateLocalOptimizedLayouts = (polygonGps, dimensions = {}, annualIrradiance = 1500) => {
+export const generateLocalOptimizedLayouts = (polygonGps, dimensions = {}, annualIrradiance = 1500, obstaclesGps = [], obstacleBufferMeters = 0.5) => {
   if (!polygonGps || polygonGps.length < 3) {
     return [];
   }
@@ -130,7 +130,19 @@ export const generateLocalOptimizedLayouts = (polygonGps, dimensions = {}, annua
           isPointInPolygon(gpsCenter, polygonGps) &&
           gpsCorners.every((c) => isPointInPolygon(c, polygonGps));
 
-        if (allInside) {
+        let hitsObstacle = false;
+        if (obstaclesGps && obstaclesGps.length > 0) {
+          for (const obs of obstaclesGps) {
+            if (obs && obs.length >= 3) {
+              if (isPointInPolygon(gpsCenter, obs) || gpsCorners.some((c) => isPointInPolygon(c, obs))) {
+                hitsObstacle = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (allInside && !hitsObstacle) {
           placements.push({
             centerGps: gpsCenter,
             polygon: gpsCorners,

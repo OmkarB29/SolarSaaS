@@ -65,7 +65,9 @@ export const panelOptimizerService = {
     return generateLocalOptimizedLayouts(
       requestData.polygonCoordinates,
       requestData.panelDimensions,
-      requestData.annualIrradiance
+      requestData.annualIrradiance,
+      requestData.obstacles || [],
+      requestData.obstacleBufferMeters || 0.5
     );
   },
 
