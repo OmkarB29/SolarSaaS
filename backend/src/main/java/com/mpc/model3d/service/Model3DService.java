@@ -140,12 +140,8 @@ public class Model3DService {
 
             // ─── MOCK MODE EVALUATION ───
             boolean hasApiKey = meshyProperties.getApiKey() != null && !meshyProperties.getApiKey().trim().isEmpty();
-            boolean isMock = meshyProperties.isMockEnabled();
-            if (!hasApiKey) {
-                isMock = true;
-            } else if (!"true".equalsIgnoreCase(System.getenv("MESHY_MOCK_ENABLED"))) {
-                isMock = false;
-            }
+            // Real Meshy AI is enabled whenever API key is present unless explicitly set to mock via env
+            boolean isMock = !hasApiKey || "true".equalsIgnoreCase(System.getenv("MESHY_MOCK_ENABLED"));
 
             if (isMock) {
                 log.info("Executing Job #{} in MOCK MODE (zero credits consumed)", jobId);
@@ -231,18 +227,24 @@ public class Model3DService {
                     throw new IllegalStateException("Meshy task succeeded but returned no GLB model URL.");
                 }
 
-                // 4. Download and immediately persist GLB locally (to defend against 3-day Meshy expiration)
-                byte[] glbBytes = meshyClient.downloadGlb(taskStatus.glbUrl);
-                String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
-
                 Model3DJob job = jobRepository.findById(jobId).orElseThrow();
                 job.setStatus(Model3DStatus.SUCCEEDED);
                 job.setProgress(100);
-                job.setGlbPath(localGlbPath);
+                job.setModelUrl(taskStatus.glbUrl);
                 job.setConsumedCredits(taskStatus.consumedCredits);
                 job.setFinishedAt(Instant.now());
                 jobRepository.save(job);
-                log.info("Meshy Job #{} succeeded! Local GLB stored at {}", jobId, localGlbPath);
+
+                // Download and persist GLB locally (to defend against 3-day Meshy expiration)
+                try {
+                    byte[] glbBytes = meshyClient.downloadGlb(taskStatus.glbUrl);
+                    String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
+                    job.setGlbPath(localGlbPath);
+                    jobRepository.save(job);
+                    log.info("Meshy Job #{} succeeded! Local GLB stored at {}", jobId, localGlbPath);
+                } catch (Exception ex) {
+                    log.warn("Local caching of GLB failed ({}), modelUrl preserved for direct streaming.", ex.getMessage());
+                }
                 return;
             } else if ("FAILED".equalsIgnoreCase(taskStatus.status)) {
                 String error = taskStatus.errorMessage != null ? taskStatus.errorMessage : "Meshy 3D generation task failed.";
@@ -277,6 +279,27 @@ public class Model3DService {
         if (!job.getUser().getId().equals(user.getId()) && !"ROLE_ADMIN".equals(user.getRole())) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied to Job #" + jobId);
         }
+
+        // Active Meshy sync: If job has meshyTaskId and is pending or missing modelUrl, query Meshy status
+        if (job.getMeshyTaskId() != null && !job.getMeshyTaskId().isBlank() && (job.getStatus() != Model3DStatus.SUCCEEDED || job.getModelUrl() == null)) {
+            try {
+                MeshyClient.MeshyTaskStatus status = meshyClient.pollTaskStatus(job.getMeshyTaskId());
+                if ("SUCCEEDED".equalsIgnoreCase(status.status) && status.glbUrl != null) {
+                    job.setStatus(Model3DStatus.SUCCEEDED);
+                    job.setProgress(100);
+                    job.setModelUrl(status.glbUrl);
+                    job.setConsumedCredits(status.consumedCredits);
+                    job.setFinishedAt(Instant.now());
+                    job = jobRepository.save(job);
+                } else if ("FAILED".equalsIgnoreCase(status.status)) {
+                    job.setStatus(Model3DStatus.FAILED);
+                    job.setErrorMessage(status.errorMessage);
+                    job = jobRepository.save(job);
+                }
+            } catch (Exception ex) {
+                log.warn("Passive sync for Job #{} failed: {}", jobId, ex.getMessage());
+            }
+        }
         return job;
     }
 
@@ -290,15 +313,51 @@ public class Model3DService {
         if (job.getStatus() != Model3DStatus.SUCCEEDED) {
             throw new IllegalStateException("3D Model is not ready yet. Status: " + job.getStatus());
         }
+
+        // 1. Try local cached GLB on disk
+        if (job.getGlbPath() != null) {
+            java.nio.file.Path file = java.nio.file.Paths.get(job.getGlbPath());
+            if (java.nio.file.Files.exists(file)) {
+                return java.nio.file.Files.readAllBytes(file);
+            }
+        }
+
+        // 2. If ephemeral storage wiped the file on Render restart, stream from Meshy model_url
+        if (job.getModelUrl() != null && !job.getModelUrl().isBlank()) {
+            try {
+                byte[] glbBytes = meshyClient.downloadGlb(job.getModelUrl());
+                String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
+                job.setGlbPath(localGlbPath);
+                jobRepository.save(job);
+                return glbBytes;
+            } catch (Exception ex) {
+                log.warn("Failed to download from saved modelUrl for Job #{}: {}", jobId, ex.getMessage());
+            }
+        }
+
+        // 3. If meshyTaskId is present, poll Meshy to get fresh signed GLB URL
+        if (job.getMeshyTaskId() != null && !job.getMeshyTaskId().isBlank()) {
+            try {
+                MeshyClient.MeshyTaskStatus status = meshyClient.pollTaskStatus(job.getMeshyTaskId());
+                if (status.glbUrl != null && !status.glbUrl.isBlank()) {
+                    byte[] glbBytes = meshyClient.downloadGlb(status.glbUrl);
+                    String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
+                    job.setGlbPath(localGlbPath);
+                    job.setModelUrl(status.glbUrl);
+                    jobRepository.save(job);
+                    return glbBytes;
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to retrieve GLB via meshyTaskId for Job #{}: {}", jobId, ex.getMessage());
+            }
+        }
+
         return glbStorageService.loadGlb(job.getGlbPath());
     }
 
     public byte[] getJobGlb(Long jobId, User user) throws Exception {
-        Model3DJob job = getJob(jobId, user);
-        if (job.getStatus() != Model3DStatus.SUCCEEDED) {
-            throw new IllegalStateException("3D Model is not ready yet. Status: " + job.getStatus());
-        }
-        return glbStorageService.loadGlb(job.getGlbPath());
+        getJob(jobId, user); // verifies ownership and syncs
+        return getJobGlb(jobId);
     }
 
     /**

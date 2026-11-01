@@ -48,6 +48,9 @@ public class Model3DJob {
     @Column(name = "glb_path", length = 500)
     private String glbPath;
 
+    @Column(name = "model_url", columnDefinition = "TEXT")
+    private String modelUrl;
+
     @Column(name = "consumed_credits")
     private int consumedCredits = 0;
 
@@ -149,6 +152,14 @@ public class Model3DJob {
 
     public void setGlbPath(String glbPath) {
         this.glbPath = glbPath;
+    }
+
+    public String getModelUrl() {
+        return modelUrl;
+    }
+
+    public void setModelUrl(String modelUrl) {
+        this.modelUrl = modelUrl;
     }
 
     public int getConsumedCredits() {

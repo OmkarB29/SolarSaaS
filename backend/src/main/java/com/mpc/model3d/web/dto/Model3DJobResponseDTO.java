@@ -15,6 +15,7 @@ public class Model3DJobResponseDTO {
     private Model3DStatus status;
     private int progress;
     private boolean hasModel;
+    private String modelUrl;
     private int consumedCredits;
     private String errorMessage;
     private Instant createdAt;
@@ -34,6 +35,7 @@ public class Model3DJobResponseDTO {
         dto.setStatus(entity.getStatus());
         dto.setProgress(entity.getProgress());
         dto.setHasModel(entity.getGlbPath() != null && !entity.getGlbPath().isBlank());
+        dto.setModelUrl(entity.getModelUrl());
         dto.setConsumedCredits(entity.getConsumedCredits());
         dto.setErrorMessage(entity.getErrorMessage());
         dto.setCreatedAt(entity.getCreatedAt());
@@ -95,6 +97,14 @@ public class Model3DJobResponseDTO {
 
     public void setProgress(int progress) {
         this.progress = progress;
+    }
+
+    public String getModelUrl() {
+        return modelUrl;
+    }
+
+    public void setModelUrl(String modelUrl) {
+        this.modelUrl = modelUrl;
     }
 
     public boolean isHasModel() {

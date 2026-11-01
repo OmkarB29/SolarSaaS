@@ -46,15 +46,12 @@ public class GlbStorageService {
             }
         }
 
-        // Fallback to bundled classpath mock-building.glb
-        ClassPathResource resource = new ClassPathResource("models/mock-building.glb");
-        if (resource.exists()) {
-            try (InputStream is = resource.getInputStream()) {
-                return is.readAllBytes();
-            }
+        // Support placeholder / bundled fallback for mock mode or unit tests
+        if (glbPath != null && (glbPath.contains("placeholder") || glbPath.contains("mock"))) {
+            return getBundledMockGlb();
         }
 
-        throw new IOException("GLB file not found at " + glbPath + " and classpath mock model missing.");
+        throw new IOException("GLB model file not found on disk at " + glbPath);
     }
 
     public byte[] getBundledMockGlb() throws IOException {

@@ -344,32 +344,40 @@ export default function Model3DCanvas({
   const [elevation, setElevation] = useState(0.0);
 
   // Model URL state with object blob resolution and error fallback
-  const [modelGlbUrl, setModelGlbUrl] = useState('/models/mock-building.glb');
+  const [modelGlbUrl, setModelGlbUrl] = useState(null);
 
   useEffect(() => {
     let active = true;
     let blobUrlToRevoke = null;
 
-    if (job?.status === 'SUCCEEDED' && job.id) {
-      // Fetch GLB as Blob with auth headers to prevent 401
-      model3dService
-        .fetchModelBlobUrl(job.id)
-        .then((blobUrl) => {
-          if (active) {
-            blobUrlToRevoke = blobUrl;
-            setModelGlbUrl(blobUrl);
-          } else {
-            URL.revokeObjectURL(blobUrl);
-          }
-        })
-        .catch((err) => {
-          console.warn('Authenticated GLB fetch failed, falling back to direct URL / placeholder:', err);
-          if (active) {
-            setModelGlbUrl(model3dService.getModelUrl(job.id));
-          }
-        });
+    if (job?.status === 'SUCCEEDED') {
+      // 1. Direct signed CDN URL from Meshy AI
+      if (job.modelUrl) {
+        setModelGlbUrl(job.modelUrl);
+        return;
+      }
+
+      // 2. Stream from backend GLB endpoint
+      if (job.id) {
+        model3dService
+          .fetchModelBlobUrl(job.id)
+          .then((blobUrl) => {
+            if (active) {
+              blobUrlToRevoke = blobUrl;
+              setModelGlbUrl(blobUrl);
+            } else {
+              URL.revokeObjectURL(blobUrl);
+            }
+          })
+          .catch((err) => {
+            console.warn('Authenticated GLB fetch failed, falling back to direct URL:', err);
+            if (active) {
+              setModelGlbUrl(model3dService.getModelUrl(job.id));
+            }
+          });
+      }
     } else {
-      setModelGlbUrl('/models/mock-building.glb');
+      setModelGlbUrl(null);
     }
 
     return () => {
@@ -490,7 +498,7 @@ export default function Model3DCanvas({
             <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
 
             {/* Layer 1: AI Generated Model (Protected with SceneErrorBoundary) */}
-            {showAiModel && (
+            {showAiModel && modelGlbUrl && (
               <SceneErrorBoundary fallback={<group />}>
                 <Suspense fallback={null}>
                   <GlbMeshModel

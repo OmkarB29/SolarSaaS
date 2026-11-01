@@ -146,7 +146,7 @@ const PanelOptimizer = () => {
     }
   });
 
-  // Query latest 3D job from backend if not already loaded in state
+  // Query latest 3D job from backend or continue polling if job is in progress
   useEffect(() => {
     if (!model3dJob) {
       model3dService
@@ -158,6 +158,22 @@ const PanelOptimizer = () => {
           }
         })
         .catch(() => {});
+    } else if (model3dJob.id && (model3dJob.status === 'PENDING' || model3dJob.status === 'IN_PROGRESS')) {
+      let active = true;
+      model3dService
+        .pollJob(model3dJob.id, (updated) => {
+          if (active) {
+            setModel3dJob(updated);
+            if (updated.status === 'SUCCEEDED') {
+              localStorage.setItem('solarscope.model3dJob', JSON.stringify(updated));
+            }
+          }
+        })
+        .catch((err) => console.warn('[PanelOptimizer] 3D polling:', err));
+
+      return () => {
+        active = false;
+      };
     }
   }, [model3dJob]);
 
@@ -215,6 +231,7 @@ const PanelOptimizer = () => {
       if (updated.latitude) setLatitude(updated.latitude);
       if (updated.longitude) setLongitude(updated.longitude);
       if (updated.roofArea || updated.area) setRoofArea(updated.roofArea || updated.area);
+      if (updated.model3dJob) setModel3dJob(updated.model3dJob);
     }
   }, [routerLocation.state]);
 
@@ -234,6 +251,7 @@ const PanelOptimizer = () => {
         if (updated.latitude) setLatitude(updated.latitude);
         if (updated.longitude) setLongitude(updated.longitude);
         if (updated.roofArea || updated.area) setRoofArea(updated.roofArea || updated.area);
+      if (updated.model3dJob) setModel3dJob(updated.model3dJob);
       }
     };
     window.addEventListener('storage', handleUpdate);
