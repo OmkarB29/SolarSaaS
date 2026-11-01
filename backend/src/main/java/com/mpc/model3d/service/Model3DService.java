@@ -141,7 +141,9 @@ public class Model3DService {
             // ─── MOCK MODE EVALUATION ───
             boolean hasApiKey = meshyProperties.getApiKey() != null && !meshyProperties.getApiKey().trim().isEmpty();
             boolean isMock = meshyProperties.isMockEnabled();
-            if (hasApiKey && !"true".equalsIgnoreCase(System.getenv("MESHY_MOCK_ENABLED"))) {
+            if (!hasApiKey) {
+                isMock = true;
+            } else if (!"true".equalsIgnoreCase(System.getenv("MESHY_MOCK_ENABLED"))) {
                 isMock = false;
             }
 
