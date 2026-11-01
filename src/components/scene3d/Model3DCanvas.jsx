@@ -189,9 +189,35 @@ function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 
 /**
  * Measured Solar Panels Layout Layer
  */
-function SolarPanelsLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5 }) {
-  // Generate a realistic grid of solar panels inside the boundary
+function SolarPanelsLayer({
+  localVertices,
+  obstaclesLocal,
+  buildingHeight = 3.5,
+  customPanels = null,
+  centerLat = 12.9716,
+  centerLng = 77.5946
+}) {
+  // Generate panel placements either from AI Panel Optimizer custom panels or procedural fallback grid
   const panelPlacements = useMemo(() => {
+    // 1. If custom panels calculated by the AI Optimizer are provided, render exact coordinates
+    if (customPanels && customPanels.length > 0) {
+      return customPanels
+        .map((p) => {
+          if (!p.polygon || p.polygon.length < 4) return null;
+          const pCenterLat = p.polygon.reduce((s, pt) => s + pt[0], 0) / p.polygon.length;
+          const pCenterLng = p.polygon.reduce((s, pt) => s + pt[1], 0) / p.polygon.length;
+          const local = gpsToLocalMeters(pCenterLat, pCenterLng, centerLat, centerLng);
+          return {
+            x: local.x,
+            z: local.z,
+            width: p.widthMeters || 1.1,
+            length: p.lengthMeters || 2.1,
+          };
+        })
+        .filter(Boolean);
+    }
+
+    // 2. Procedural grid inside polygon
     if (localVertices.length < 3) return [];
 
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -242,19 +268,19 @@ function SolarPanelsLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5 
         }
 
         if (!hitsObstacle) {
-          panels.push({ x, z });
+          panels.push({ x, z, width: panelWidth, length: panelHeight });
         }
       }
     }
 
     return panels;
-  }, [localVertices, obstaclesLocal]);
+  }, [localVertices, obstaclesLocal, customPanels, centerLat, centerLng]);
 
   return (
     <group position={[0, buildingHeight + 0.1, 0]}>
       {panelPlacements.map((panel, idx) => (
         <mesh key={idx} position={[panel.x, 0, panel.z]} rotation={[-Math.PI / 12, 0, 0]} castShadow>
-          <boxGeometry args={[1.9, 0.05, 0.95]} />
+          <boxGeometry args={[panel.width ? panel.width * 0.95 : 1.9, 0.05, panel.length ? panel.length * 0.95 : 0.95]} />
           <meshStandardMaterial
             color="#1E3A8A"
             roughness={0.2}
@@ -266,7 +292,15 @@ function SolarPanelsLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5 
   );
 }
 
-export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [], minRotatedRect = null }) {
+export default function Model3DCanvas({
+  job,
+  polygonCoordinates,
+  obstacles = [],
+  minRotatedRect = null,
+  customPanels = null,
+  canvasHeight = 'h-80',
+  className = ''
+}) {
   // Layer Toggles
   const [showAiModel, setShowAiModel] = useState(true);
   const [showMeasuredBoundary, setShowMeasuredBoundary] = useState(true);
@@ -353,7 +387,7 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
   }, [obstacles, centerLat, centerLng]);
 
   return (
-    <div className="flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+    <div className={`flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl ${className}`}>
       {/* ─── MANDATORY AI DISCLAIMER BANNER ─── */}
       <div className="bg-blue-950/80 border-b border-blue-800/80 px-3.5 py-2 flex items-start gap-2 text-2xs text-blue-200">
         <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
@@ -363,7 +397,7 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
       </div>
 
       {/* ─── 3D VIEWPORT CANVAS ─── */}
-      <div className="relative w-full h-80 bg-gradient-to-b from-slate-900 to-slate-950">
+      <div className={`relative w-full ${canvasHeight} bg-gradient-to-b from-slate-900 to-slate-950`}>
         <CanvasErrorBoundary>
           <Canvas
             camera={{ position: [0, 25, 35], fov: 45 }}
@@ -404,11 +438,14 @@ export default function Model3DCanvas({ job, polygonCoordinates, obstacles = [],
               />
             )}
 
-            {/* Layer 3: Measured Solar Panel Layout */}
+            {/* Layer 3: Measured Solar Panel Layout (Synchronized with AI Panel Optimizer) */}
             {showPanelLayout && (
               <SolarPanelsLayer
                 localVertices={localVertices}
                 obstaclesLocal={obstaclesLocal}
+                customPanels={customPanels}
+                centerLat={centerLat}
+                centerLng={centerLng}
               />
             )}
           </Canvas>

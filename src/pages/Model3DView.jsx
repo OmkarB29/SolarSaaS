@@ -426,14 +426,18 @@ export default function Model3DView() {
       obstacles: obstacles,
       obstacleBufferMeters: 0.5,
       minRotatedRect: liveMetrics.minRotatedRect,
+      model3dJob: activeJob,
     };
 
     localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
     localStorage.setItem('solarscope.selectedRooftop', JSON.stringify(rooftopData));
+    if (activeJob) {
+      localStorage.setItem('solarscope.model3dJob', JSON.stringify(activeJob));
+    }
     window.dispatchEvent(new Event('storage'));
     window.dispatchEvent(new CustomEvent('solarscope:rooftop-updated', { detail: rooftopData }));
 
-    navigate('/panel-optimizer', { state: { rooftop: rooftopData } });
+    navigate('/panel-optimizer', { state: { rooftop: rooftopData, defaultView: '3D' } });
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -673,11 +677,15 @@ export default function Model3DView() {
 
       const job = await model3dService.createJob(jobPayload);
       setActiveJob(job);
+      localStorage.setItem('solarscope.model3dJob', JSON.stringify(job));
       setIsConfirmModalOpen(false);
 
       // Start polling for job completion
       model3dService.pollJob(job.id, (updatedJob) => {
         setActiveJob(updatedJob);
+        if (updatedJob.status === 'SUCCEEDED') {
+          localStorage.setItem('solarscope.model3dJob', JSON.stringify(updatedJob));
+        }
       }).catch((err) => {
         setJobError(err.message || 'Model generation polling failed.');
       });

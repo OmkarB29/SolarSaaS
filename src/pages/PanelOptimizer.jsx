@@ -25,10 +25,13 @@ import {
   TrendingUp,
   MapPin,
   Compass,
-  Square
+  Square,
+  Box
 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import PanelMapViewer from '../components/map/PanelMapViewer';
+import Model3DCanvas from '../components/scene3d/Model3DCanvas';
+import { model3dService } from '../services/model3dService';
 import { panelOptimizerService } from '../services/panelOptimizerService';
 import { downloadSolarPotentialReport, downloadPanelOptimizationReport } from '../services/reportService';
 import { useLanguage } from '../context/LanguageContext';
@@ -125,6 +128,39 @@ const PanelOptimizer = () => {
     return layouts.find(l => l.mode === activeMode) || layouts[0];
   }, [layouts, activeMode]);
 
+  // View Switcher (2D Leaflet Map vs 3D Meshy AI Model)
+  const [optimizerView, setOptimizerView] = useState(
+    routerLocation.state?.defaultView ||
+    (localStorage.getItem('solarscope.model3dJob') ? '3D' : '2D')
+  );
+
+  const [model3dJob, setModel3dJob] = useState(() => {
+    try {
+      return (
+        routerLocation.state?.rooftop?.model3dJob ||
+        JSON.parse(localStorage.getItem('solarscope.model3dJob')) ||
+        null
+      );
+    } catch {
+      return null;
+    }
+  });
+
+  // Query latest 3D job from backend if not already loaded in state
+  useEffect(() => {
+    if (!model3dJob) {
+      model3dService
+        .listUserJobs()
+        .then((jobs) => {
+          if (jobs && jobs.length > 0) {
+            const latestSucceeded = jobs.find((j) => j.status === 'SUCCEEDED') || jobs[0];
+            setModel3dJob(latestSucceeded);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [model3dJob]);
+
   // Request Layout Optimization from Backend Engine
   const fetchOptimizedLayouts = async (poly, dims) => {
     if (!poly || poly.length < 3) {
@@ -145,6 +181,8 @@ const PanelOptimizer = () => {
         roofArea,
         analysisId: rooftop?.id || null,
         panelDimensions: dims,
+        obstacles: rooftop?.obstacles || [],
+        obstacleBufferMeters: rooftop?.obstacleBufferMeters || 0.5,
       };
 
       const results = await panelOptimizerService.optimizeLayouts(payload);
@@ -610,17 +648,80 @@ const PanelOptimizer = () => {
             </div>
           </Card>
 
-          {/* Middle Section: Leaflet Interactive Vector Map & Usable Area Breakdown */}
+          {/* Middle Section: Interactive Optimizer Field (2D Satellite Vector Map vs 3D Photorealistic Mesh) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Leaflet Vector Placement Map */}
-            <div className="lg:col-span-2 h-[480px] w-full">
-              <PanelMapViewer
-                center={[latitude, longitude]}
-                polygonCoordinates={polygonCoordinates}
-                panels={activeLayout?.panels || []}
-                activeMode={activeMode}
-                panelDimensions={dimensions}
-              />
+            <div className="lg:col-span-2 w-full space-y-3">
+              {/* Field View Switcher */}
+              <div className="flex flex-wrap items-center justify-between bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800">Optimizer Viewport:</span>
+                  <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setOptimizerView('2D')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                        optimizerView === '2D'
+                          ? 'bg-white text-indigo-600 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Layers size={14} />
+                      <span>2D Satellite Map</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOptimizerView('3D')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                        optimizerView === '3D'
+                          ? 'bg-white text-indigo-600 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Box size={14} className="text-indigo-600" />
+                      <span>3D Model View (Meshy AI)</span>
+                      {model3dJob && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="3D Mesh Ready" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/model-3d"
+                    className="text-2xs font-bold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
+                  >
+                    <Sparkles size={12} className="text-amber-500" />
+                    <span>3D CAD Studio</span>
+                    <ArrowRight size={11} />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Layout Visualizer: 2D Vector Map or 3D Photorealistic Mesh */}
+              <div className="w-full">
+                {optimizerView === '2D' ? (
+                  <div className="h-[480px] w-full">
+                    <PanelMapViewer
+                      center={[latitude, longitude]}
+                      polygonCoordinates={polygonCoordinates}
+                      panels={activeLayout?.panels || []}
+                      activeMode={activeMode}
+                      panelDimensions={dimensions}
+                    />
+                  </div>
+                ) : (
+                  <Model3DCanvas
+                    job={model3dJob}
+                    polygonCoordinates={polygonCoordinates}
+                    obstacles={rooftop?.obstacles || []}
+                    customPanels={activeLayout?.panels || []}
+                    minRotatedRect={rooftop?.minRotatedRect || null}
+                    canvasHeight="h-[400px]"
+                    className="w-full"
+                  />
+                )}
+              </div>
             </div>
 
             {/* Right Column: Usable Area Breakdown & Active Metrics */}
