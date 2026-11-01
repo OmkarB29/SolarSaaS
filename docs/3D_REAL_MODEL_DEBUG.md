@@ -112,3 +112,50 @@ Direct query to Meshy API with the configured key returned 3 real completed task
 - [x] Frontend builds cleanly with zero errors (`npm run build`).
 - [x] Git branch `feature/3d-rooftop-model` synchronized on both repositories (`OmkarB29/solarscope-backend` and `OmkarB29/SolarSaaS`).
 - [x] Verified Job #6 GLB stream on Render: HTTP 200, 4.3 MB binary glTF.
+
+---
+
+## 6. Step B Implementation: Real Geometry Sources & Coplanar Flat Rooftop Placement
+
+### A. Google Solar DSM Ingestion (B1 - Preferred where covered)
+1. **Backend Integration (`SolarApiService.java` & `SolarController.java`)**:
+   - `GET /api/solar/data-layers?latitude={lat}&longitude={lng}&radiusMeters={radius}&requiredQuality={quality}`
+     - Validates and clamps `radiusMeters` between 10m and 100m (Google API limit).
+     - Loops through documented qualities (`HIGH` -> `MEDIUM` -> `BASE`).
+     - Caches responses in `ConcurrentHashMap` by `latitude_longitude_radius_quality` so repeated requests cost \$0.
+   - `GET /api/solar/geotiff?url={encodedGoogleUrl}`
+     - Secure backend proxy that attaches the Google Server API key server-side. The browser never sees the key.
+     - SSRF protection: strictly enforces that URLs must originate from `https://solar.googleapis.com/`.
+     - In-memory cache for GeoTIFF binaries (`byte[]`), preventing duplicate network fetches and quota usage.
+     - Returns `image/tiff` with `Cache-Control: public, max-age=86400`.
+
+2. **Client-Side GeoTIFF Ingestion (`solarDsmParser.js`)**:
+   - Uses `geotiff.js` (`fromArrayBuffer`) in `src/utils/solarDsmParser.js`.
+   - Parses Float32 elevation rasters and building mask rasters.
+   - Computes ground reference elevation $H_{\text{ground}}$ from the 5th percentile of non-building pixels.
+   - Computes relative height above ground: $h(x, z) = H_{\text{dsm}}(x, z) - H_{\text{ground}}$.
+   - Exposes quality metadata: `imageryQuality`, `pixelSizeMeters`, `imageryDate`, and percentage of valid pixels (`validPixelPercent`).
+
+### B. Fallback Hierarchy & Unified Metric Height Grid (B2 & B3)
+All geometry sources feed into a single unified height provider interface:
+- **Priority 1: Google Solar DSM** (where covered): Samples elevation $h(x, z)$ directly from the DSM raster.
+- **Priority 2: Meshy AI 3D Mesh** (when available, e.g., Job #6): Loads real 4.3 MB GLB mesh and aligns roof surface to metric building height.
+- **Priority 3: Parametric Flat Rooftop** (fallback, e.g. unmapped regions like India where Solar API returns 404): Generates flat rooftop surface at $h(x, z) = \text{buildingHeight} + \text{elevation}$.
+
+### C. Coplanar Flat Rooftop Panel Placement
+1. **Rotated Grid Math Fix**:
+   - In `Model3DCanvas.jsx` procedural fallback and `localPanelOptimizer.js`:
+   - Rotates the sampling coordinate system into roof-aligned coordinates $(u, v)$ using `dominantAngle` / `roofBearingDeg`.
+   - Eliminates the jagged sawtooth / staircase pattern caused by unrotated axis-aligned bounds iteration.
+2. **Obstacle Collision Avoidance**:
+   - Integrated obstacle polygon collision checks into `localPanelOptimizer.js` and `Model3DCanvas.jsx`. Panels overlapping obstacle polygons or their safety buffer are rejected.
+3. **Coplanar Roof Surface Snapping**:
+   - Each panel is positioned at:
+     $$X = cx, \quad Y = h(cx, cz) + 0.05, \quad Z = cz$$
+   - Panels lie flush and coplanar directly on top of the flat rooftop surface without clipping or floating.
+
+### D. Active Geometry Source Diagnostic Badge
+The 3D canvas top-left HUD dynamically reflects the active geometry engine:
+- **Google Solar DSM**: Displays `Source: Google Solar DSM | Quality: HIGH | Pixel: 0.1m | Valid: 99.4% | Date: 2023-06`.
+- **Meshy AI**: Displays `Source: Meshy AI | Job #6 | 30 cr | 4.3 MB`.
+- **Parametric**: Displays `Source: Parametric | Height: 3.5m` (with `Solar DSM Uncovered (Fallback)` in uncovered regions).
