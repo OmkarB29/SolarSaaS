@@ -159,3 +159,32 @@ The 3D canvas top-left HUD dynamically reflects the active geometry engine:
 - **Google Solar DSM**: Displays `Source: Google Solar DSM | Quality: HIGH | Pixel: 0.1m | Valid: 99.4% | Date: 2023-06`.
 - **Meshy AI**: Displays `Source: Meshy AI | Job #6 | 30 cr | 4.3 MB`.
 - **Parametric**: Displays `Source: Parametric | Height: 3.5m` (with `Solar DSM Uncovered (Fallback)` in uncovered regions).
+
+
+---
+
+## 7. Resolution of Job #7 "Failed to fetch" (Meshy CDN CORS Block)
+
+### Symptom
+On `/model-3d`, Job #7 displayed the diagnostic badge `Source: Meshy AI | Job #7 | 30 cr`, but displayed a red error badge with `Failed to fetch [Retry]`, leaving the 3D canvas viewport dark.
+
+### Root Cause
+1. **Meshy CDN Cross-Origin Rejection**:
+   - `jobToLoad.modelUrl` contained the direct Meshy signed asset link (`https://assets.meshy.ai/.../output/model.glb`).
+   - `loadGlbModel` prioritized `jobToLoad.modelUrl` over the backend proxy endpoint `model3dService.getModelUrl(jobToLoad.id)`.
+   - Meshy's Cloudflare storage bucket returns `Access-Control-Allow-Origin: null` (disallowing browser-based cross-origin JavaScript requests).
+   - Chrome blocked the preflight request with a CORS policy violation and threw `TypeError: Failed to fetch`.
+2. **Backend Proxy Proof**:
+   - The Render backend endpoint `https://solarscope-backend-wu7q.onrender.com/api/model3d/jobs/7/model` already contains the full 4.38 MB GLB model (`4,597,880 bytes`) and serves it with `Content-Type: model/gltf-binary` and `access-control-allow-origin: http://localhost:5173`.
+
+### Fix Implemented
+In [`Model3DCanvas.jsx`](file:///c:/Users/omkar/OneDrive/Desktop/mp/MPC/src/components/scene3d/Model3DCanvas.jsx):
+1. **Always Route via Backend Endpoint**:
+   ```javascript
+   const targetUrl = jobToLoad.id
+     ? model3dService.getModelUrl(jobToLoad.id)
+     : jobToLoad.modelUrl;
+   ```
+2. **Expired Token Resilience**:
+   Because `/api/model3d/jobs/*/model` is configured `permitAll()`, if an expired JWT token returns 401, `loadGlbModel` automatically retries unauthenticated so valid models stream without requiring a re-login.
+3. Verified via automated Node fetch test against Render backend: HTTP 200, 4.38 MB downloaded successfully.
