@@ -588,18 +588,42 @@ export default function Model3DCanvas({
     setModelStatus('downloading');
 
     try {
-      const targetUrl = jobToLoad.modelUrl || model3dService.getModelUrl(jobToLoad.id);
-      const token = getStoredAuth()?.token;
+      // 1. Prefer backend proxy endpoint /api/model3d/jobs/{id}/model because Meshy signed CDN URLs
+      // have no Access-Control-Allow-Origin headers (causing browser CORS 'Failed to fetch') and expire after 72 hours.
+      const targetUrl = jobToLoad.id
+        ? model3dService.getModelUrl(jobToLoad.id)
+        : jobToLoad.modelUrl;
 
+      const token = getStoredAuth()?.token;
       console.info(`[Model3DCanvas] Requesting GLB for Job #${jobToLoad.id || 'direct'} from: ${targetUrl}`);
-      const res = await fetch(targetUrl, {
-        headers: (!jobToLoad.modelUrl && token) ? { Authorization: `Bearer ${token}` } : {},
-      });
+
+      let res;
+      try {
+        res = await fetch(targetUrl, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.status === 401) {
+          // If token has expired, retry unauthenticated since model endpoint is permitAll()
+          console.warn('[Model3DCanvas] Auth 401 on model endpoint, retrying unauthenticated...');
+          res = await fetch(targetUrl);
+        }
+      } catch (corsOrNetErr) {
+        // If fetch with Authorization failed due to preflight or CORS, retry plain fetch
+        console.warn('[Model3DCanvas] Fetch with auth failed, retrying plain fetch:', corsOrNetErr);
+        res = await fetch(targetUrl);
+      }
 
       console.info(`[Model3DCanvas] GLB Response: HTTP ${res.status} ${res.statusText}, Content-Type: ${res.headers.get('content-type')}`);
       if (!res.ok) {
-        const errorText = await res.text().catch(() => '');
-        throw new Error(`Server returned HTTP ${res.status} (${res.statusText}): ${errorText || 'Failed to download model'}`);
+        // Fallback: If backend fails and direct modelUrl exists, try loading as direct url
+        if (jobToLoad.modelUrl && targetUrl !== jobToLoad.modelUrl) {
+          console.warn('[Model3DCanvas] Backend model endpoint failed, attempting direct modelUrl fallback...');
+          res = await fetch(jobToLoad.modelUrl).catch(() => res);
+        }
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => '');
+          throw new Error(`Server returned HTTP ${res.status} (${res.statusText}): ${errorText || 'Failed to download model'}`);
+        }
       }
 
       const cl = res.headers.get('content-length');
