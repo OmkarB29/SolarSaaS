@@ -26,7 +26,7 @@ public class RooftopProperties {
         }
 
         public static class GoogleStatic {
-            private boolean enabled = false;
+            private boolean enabled = true;
             private String key = "";
 
             public boolean isEnabled() {
@@ -49,6 +49,7 @@ public class RooftopProperties {
 
     public static class Storage {
         private String glbDir = "uploads/models3d";
+        private String auditDir = "uploads/audit_images";
 
         public String getGlbDir() {
             return glbDir;
@@ -56,6 +57,14 @@ public class RooftopProperties {
 
         public void setGlbDir(String glbDir) {
             this.glbDir = glbDir;
+        }
+
+        public String getAuditDir() {
+            return auditDir;
+        }
+
+        public void setAuditDir(String auditDir) {
+            this.auditDir = auditDir;
         }
     }
 }

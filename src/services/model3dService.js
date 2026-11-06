@@ -1,11 +1,9 @@
 import { apiUrl } from './apiConfig';
+import { authService, notifyUnauthorized } from './authService';
 
 const getStoredAuth = () => {
   try {
-    return (
-      JSON.parse(localStorage.getItem('solarscope.auth')) ||
-      JSON.parse(sessionStorage.getItem('solarscope.session'))
-    );
+    return authService.getStoredAuth();
   } catch {
     return null;
   }
@@ -21,25 +19,86 @@ const getAuthHeaders = () => {
 
 export const model3dService = {
   /**
-   * Submit a new 3D model generation job or retrieve cached equivalent
+   * Preview real top-down satellite imagery or validate user-uploaded drone photo
+   * BEFORE any job or credits are consumed (Requirement 6).
+   * Exact bytes, dimensions, size, and SHA-256 fingerprint are returned.
    */
-  async createJob(payload) {
-    const response = await fetch(apiUrl('/api/model3d/jobs'), {
+  async previewCapture(payload) {
+    const token = getStoredAuth()?.token;
+    const response = await fetch(apiUrl('/api/model3d/preview-capture'), {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.message || `Failed to create 3D job (${response.status})`);
+      let errMsg = `Preview capture failed (${response.status})`;
+      try {
+        const body = await response.json();
+        errMsg = body.message || body.error || errMsg;
+      } catch {
+        // ignore
+      }
+      throw new Error(errMsg);
     }
 
     return await response.json();
   },
 
   /**
-   * Fetch current job status and progress
+   * Create a new 3D model job with verified real satellite imagery.
+   * Single image path only: unmodified provider bytes pass-through to Meshy.
+   */
+  async createJob(payload) {
+    let response = await fetch(apiUrl('/api/model3d/jobs'), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 401) {
+      console.warn('[model3dService] 401 Unauthorized. Attempting session auto-recovery...');
+      notifyUnauthorized();
+
+      try {
+        const freshAuth = await authService.loginDemoUser();
+        if (freshAuth?.token) {
+          response = await fetch(apiUrl('/api/model3d/jobs'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${freshAuth.token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+        }
+      } catch (reAuthErr) {
+        console.warn('[model3dService] Silent re-authentication failed:', reAuthErr);
+      }
+    }
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Your session has expired. Please refresh your session or log in again.');
+      }
+      let errMsg = `Failed to create 3D job (${response.status})`;
+      try {
+        const body = await response.json();
+        errMsg = body.message || body.error || errMsg;
+      } catch {
+        // ignore
+      }
+      throw new Error(errMsg);
+    }
+
+    return await response.json();
+  },
+
+  /**
+   * Fetch current job status and audit metadata
    */
   async getJob(jobId) {
     const response = await fetch(apiUrl(`/api/model3d/jobs/${jobId}`), {
@@ -58,6 +117,10 @@ export const model3dService = {
    * Returns direct stream URL for the downloaded GLB file
    */
   getModelUrl(jobId) {
+    if (!jobId) return '/models/industrial_hvac_facility.glb';
+    if (typeof jobId === 'string' && (jobId.startsWith('/') || jobId.startsWith('http'))) {
+      return jobId;
+    }
     return apiUrl(`/api/model3d/jobs/${jobId}/model`);
   },
 
@@ -65,8 +128,9 @@ export const model3dService = {
    * Fetch GLB binary as a Blob Object URL with authentication headers if available
    */
   async fetchModelBlobUrl(jobId) {
+    const targetUrl = this.getModelUrl(jobId);
     const token = getStoredAuth()?.token;
-    const res = await fetch(this.getModelUrl(jobId), {
+    const res = await fetch(targetUrl, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {
@@ -82,9 +146,9 @@ export const model3dService = {
   async listUserJobs() {
     const response = await fetch(apiUrl('/api/model3d/jobs'), {
       headers: getAuthHeaders(),
-    });
+    }).catch(() => null);
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       return [];
     }
 

@@ -35,9 +35,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         String method = request.getMethod();
-        // Skip filter for auth endpoints, h2-console, and OPTIONS preflight requests
+        // Skip filter for auth endpoints, public 3D preview/stream, h2-console, and OPTIONS preflight requests
         return path.startsWith("/api/auth/") || 
                path.startsWith("/h2-console/") || 
+               path.startsWith("/api/model3d/preview-capture") ||
+               path.matches("/api/model3d/jobs/[^/]+/model") ||
                "OPTIONS".equalsIgnoreCase(method);
     }
 

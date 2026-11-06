@@ -3,18 +3,36 @@ import { apiUrl } from './apiConfig';
 const AUTH_KEY = 'solarscope.auth';
 const SESSION_KEY = 'solarscope.session';
 
-const decodeJwtRole = (token) => {
-  if (!token) return 'ROLE_USER';
-
+export const decodeJwtPayload = (token) => {
+  if (!token) return null;
   try {
     const payload = token.split('.')[1];
-    if (!payload) return 'ROLE_USER';
-
+    if (!payload) return null;
     const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const decoded = JSON.parse(atob(normalized));
-    return decoded.role || 'ROLE_USER';
+    return JSON.parse(atob(normalized));
   } catch {
-    return 'ROLE_USER';
+    return null;
+  }
+};
+
+export const isJwtExpired = (token) => {
+  if (!token) return true;
+  const decoded = decodeJwtPayload(token);
+  if (!decoded || !decoded.exp) return false;
+  // Expired if current time >= exp in milliseconds (with 15s safety buffer)
+  return Date.now() >= (decoded.exp * 1000 - 15000);
+};
+
+const decodeJwtRole = (token) => {
+  const decoded = decodeJwtPayload(token);
+  return decoded?.role || 'ROLE_USER';
+};
+
+export const notifyUnauthorized = () => {
+  try {
+    window.dispatchEvent(new CustomEvent('solarscope:auth:unauthorized'));
+  } catch {
+    // Ignore in non-browser env
   }
 };
 
@@ -28,6 +46,9 @@ const requestJson = async (url, options) => {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      notifyUnauthorized();
+    }
     let message = 'Authentication request failed.';
     try {
       const body = await response.json();
@@ -63,9 +84,12 @@ export const authService = {
   getStoredAuth() {
     const storedAuth = readJson(localStorage, AUTH_KEY, null) || readJson(sessionStorage, SESSION_KEY, null);
 
-    if (storedAuth && !storedAuth.token) {
-      this.logout();
-      return null;
+    if (storedAuth) {
+      if (!storedAuth.token || isJwtExpired(storedAuth.token)) {
+        console.warn('[authService] Stored JWT token has expired or is invalid. Clearing expired session.');
+        this.logout();
+        return null;
+      }
     }
 
     return storedAuth;
@@ -97,6 +121,14 @@ export const authService = {
     writeJson(remember ? localStorage : sessionStorage, remember ? AUTH_KEY : SESSION_KEY, authPayload);
 
     return authPayload;
+  },
+
+  async loginDemoUser() {
+    return await this.login({
+      email: 'user@solarsaas.com',
+      password: 'User@12345',
+      remember: true,
+    });
   },
 
   async signup({ fullName, email, password }) {

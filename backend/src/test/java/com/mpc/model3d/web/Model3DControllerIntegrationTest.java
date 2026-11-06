@@ -5,6 +5,9 @@ import com.mpc.MpcApplication;
 import com.mpc.model3d.domain.Model3DJob;
 import com.mpc.model3d.domain.Model3DStatus;
 import com.mpc.model3d.repository.Model3DJobRepository;
+import com.mpc.model3d.service.image.CapturedImageResult;
+import com.mpc.model3d.service.image.GoogleStaticMapsProvider;
+import com.mpc.model3d.service.image.MercatorProjectionUtil;
 import com.mpc.model3d.web.dto.Model3DJobRequestDTO;
 import com.mpc.user.domain.User;
 import com.mpc.user.repository.UserRepository;
@@ -16,13 +19,23 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Random;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -45,6 +58,9 @@ class Model3DControllerIntegrationTest {
 
     @Autowired
     private Filter springSecurityFilterChain;
+
+    @MockitoBean
+    private GoogleStaticMapsProvider googleStaticMapsProvider;
 
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -102,6 +118,23 @@ class Model3DControllerIntegrationTest {
         return objectMapper.readTree(response).get("token").asText();
     }
 
+    private byte[] createTexturedImageBytes(int w, int h) throws IOException {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        Random rng = new Random(42);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int r = 50 + rng.nextInt(150);
+                int g = 60 + rng.nextInt(140);
+                int b = 40 + rng.nextInt(160);
+                int rgb = (r << 16) | (g << 8) | b;
+                img.setRGB(x, y, rgb);
+            }
+        }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(img, "PNG", baos);
+        return baos.toByteArray();
+    }
+
     @Test
     void unauthenticatedRequestToCreateJobReturns401() throws Exception {
         Model3DJobRequestDTO req = new Model3DJobRequestDTO();
@@ -119,6 +152,19 @@ class Model3DControllerIntegrationTest {
 
     @Test
     void authenticatedUserCanCreateAndGet3DJob() throws Exception {
+        byte[] validImageBytes = createTexturedImageBytes(1280, 1280);
+        CapturedImageResult mockResult = new CapturedImageResult(
+                validImageBytes,
+                1280,
+                1280,
+                (long) validImageBytes.length,
+                MercatorProjectionUtil.computeSha256(validImageBytes),
+                20,
+                "GOOGLE_STATIC",
+                450.0
+        );
+        when(googleStaticMapsProvider.captureRooftopImage(any(), any())).thenReturn(mockResult);
+
         Model3DJobRequestDTO req = new Model3DJobRequestDTO();
         req.setLatitude(12.9717);
         req.setLongitude(77.5947);
@@ -180,18 +226,25 @@ class Model3DControllerIntegrationTest {
 
     @Test
     void unauthenticatedClientCanStreamSucceededModelGlb() throws Exception {
-        Model3DJob job = new Model3DJob();
-        job.setUser(testUser);
-        job.setPolygonHash("hash_public_stream");
-        job.setPolygonJson("[[12.97, 77.59]]");
-        job.setStatus(Model3DStatus.SUCCEEDED);
-        job.setProgress(100);
-        job.setImageSource("GOOGLE_STATIC");
-        job.setGlbPath("placeholder"); // GlbStorageService returns bundled mock glb when placeholder path is used
-        job.setCreatedAt(Instant.now());
-        job = jobRepository.save(job);
+        Path tempGlb = Files.createTempFile("test_model", ".glb");
+        Files.write(tempGlb, new byte[]{1, 2, 3, 4});
 
-        mockMvc.perform(get("/api/model3d/jobs/" + job.getId() + "/model"))
-                .andExpect(status().isOk());
+        try {
+            Model3DJob job = new Model3DJob();
+            job.setUser(testUser);
+            job.setPolygonHash("hash_public_stream");
+            job.setPolygonJson("[[12.97, 77.59]]");
+            job.setStatus(Model3DStatus.SUCCEEDED);
+            job.setProgress(100);
+            job.setImageSource("GOOGLE_STATIC");
+            job.setGlbPath(tempGlb.toAbsolutePath().toString());
+            job.setCreatedAt(Instant.now());
+            job = jobRepository.save(job);
+
+            mockMvc.perform(get("/api/model3d/jobs/" + job.getId() + "/model"))
+                    .andExpect(status().isOk());
+        } finally {
+            Files.deleteIfExists(tempGlb);
+        }
     }
 }

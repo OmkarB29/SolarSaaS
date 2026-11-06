@@ -2,8 +2,10 @@ package com.mpc.model3d.web;
 
 import com.mpc.model3d.domain.Model3DJob;
 import com.mpc.model3d.service.Model3DService;
+import com.mpc.model3d.service.image.CapturedImageResult;
 import com.mpc.model3d.web.dto.Model3DJobRequestDTO;
 import com.mpc.model3d.web.dto.Model3DJobResponseDTO;
+import com.mpc.model3d.web.dto.RooftopCapturePreviewDTO;
 import com.mpc.user.domain.User;
 import com.mpc.user.repository.UserRepository;
 import org.springframework.http.HttpHeaders;
@@ -34,6 +36,21 @@ public class Model3DController {
         }
         return userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+    }
+
+    /**
+     * POST /api/model3d/preview-capture: Previews the exact real satellite or uploaded image,
+     * dimensions, and file size BEFORE creating a job or spending any credits.
+     */
+    @PostMapping("/preview-capture")
+    public ResponseEntity<RooftopCapturePreviewDTO> previewCapture(
+            @RequestBody Model3DJobRequestDTO request) {
+        try {
+            CapturedImageResult result = model3DService.capturePreview(request);
+            return ResponseEntity.ok(RooftopCapturePreviewDTO.fromCapturedResult(result, "Real satellite imagery verified."));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        }
     }
 
     /**

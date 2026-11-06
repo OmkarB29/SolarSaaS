@@ -1,19 +1,23 @@
 package com.mpc.auth.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
 @Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -32,7 +36,7 @@ public class SecurityConfig {
                 .exceptionHandling(exception -> exception.authenticationEntryPoint((request, response, authException) ->
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/auth/**", "/api/solar/building-insights", "/api/panel-optimizer/optimize", "/api/scene3d/**", "/api/rooftops/**", "/api/model3d/jobs/*/model").permitAll()
+                        .requestMatchers("/api/auth/**", "/api/solar/building-insights", "/api/panel-optimizer/optimize", "/api/scene3d/**", "/api/rooftops/**", "/api/model3d/jobs/*/model", "/api/model3d/preview-capture").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/analysis/**", "/api/reports/**", "/api/financial/**", "/api/proposals/**", "/api/solar/**", "/api/ai/**", "/api/panel-optimizer/**", "/api/model3d/**").authenticated()
                         .requestMatchers("/h2-console/**").permitAll()

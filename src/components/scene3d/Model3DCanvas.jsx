@@ -588,11 +588,17 @@ export default function Model3DCanvas({
     setModelStatus('downloading');
 
     try {
-      // 1. Prefer backend proxy endpoint /api/model3d/jobs/{id}/model because Meshy signed CDN URLs
-      // have no Access-Control-Allow-Origin headers (causing browser CORS 'Failed to fetch') and expire after 72 hours.
-      const targetUrl = jobToLoad.id
-        ? model3dService.getModelUrl(jobToLoad.id)
-        : jobToLoad.modelUrl;
+      // 1. Prefer backend proxy endpoint /api/model3d/jobs/{id}/model for cloud jobs,
+      // but use direct modelUrl for local models and fallback digital twins.
+      const isLocalOrFallback = Boolean(
+        jobToLoad.isFallback ||
+        (typeof jobToLoad.id === 'string' && (jobToLoad.id.startsWith('local_') || jobToLoad.id.startsWith('demo-') || jobToLoad.id.startsWith('gen-'))) ||
+        (jobToLoad.modelUrl && jobToLoad.modelUrl.startsWith('/'))
+      );
+
+      const targetUrl = isLocalOrFallback
+        ? (jobToLoad.modelUrl || '/models/industrial_hvac_facility.glb')
+        : (jobToLoad.id ? model3dService.getModelUrl(jobToLoad.id) : jobToLoad.modelUrl);
 
       const token = getStoredAuth()?.token;
       console.info(`[Model3DCanvas] Requesting GLB for Job #${jobToLoad.id || 'direct'} from: ${targetUrl}`);

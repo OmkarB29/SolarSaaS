@@ -6,5 +6,5 @@ public interface RooftopImageProvider {
 
     String getProviderName();
 
-    byte[] captureRooftopImage(List<List<Double>> polygonCoordinates, String uploadedImageBase64);
+    CapturedImageResult captureRooftopImage(List<List<Double>> polygonCoordinates, String uploadedImageBase64);
 }

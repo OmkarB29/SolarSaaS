@@ -12,6 +12,7 @@ public class Model3DJobRequestDTO {
     private Double roofArea;
     private String imageSource = "GOOGLE_STATIC"; // "GOOGLE_STATIC" | "UPLOADED"
     private String imageBase64;
+    private String meshyApiKey;
 
     public Model3DJobRequestDTO() {
     }
@@ -78,5 +79,13 @@ public class Model3DJobRequestDTO {
 
     public void setImageBase64(String imageBase64) {
         this.imageBase64 = imageBase64;
+    }
+
+    public String getMeshyApiKey() {
+        return meshyApiKey;
+    }
+
+    public void setMeshyApiKey(String meshyApiKey) {
+        this.meshyApiKey = meshyApiKey;
     }
 }

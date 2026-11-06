@@ -18,6 +18,11 @@ public class Model3DJobResponseDTO {
     private String modelUrl;
     private int consumedCredits;
     private String errorMessage;
+    private String auditImagePath;
+    private Integer imageWidth;
+    private Integer imageHeight;
+    private Long imageSizeBytes;
+    private String imageSha256;
     private Instant createdAt;
     private Instant finishedAt;
 
@@ -38,6 +43,11 @@ public class Model3DJobResponseDTO {
         dto.setModelUrl(entity.getModelUrl());
         dto.setConsumedCredits(entity.getConsumedCredits());
         dto.setErrorMessage(entity.getErrorMessage());
+        dto.setAuditImagePath(entity.getAuditImagePath());
+        dto.setImageWidth(entity.getImageWidth());
+        dto.setImageHeight(entity.getImageHeight());
+        dto.setImageSizeBytes(entity.getImageSizeBytes());
+        dto.setImageSha256(entity.getImageSha256());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setFinishedAt(entity.getFinishedAt());
         return dto;
@@ -99,20 +109,20 @@ public class Model3DJobResponseDTO {
         this.progress = progress;
     }
 
-    public String getModelUrl() {
-        return modelUrl;
-    }
-
-    public void setModelUrl(String modelUrl) {
-        this.modelUrl = modelUrl;
-    }
-
     public boolean isHasModel() {
         return hasModel;
     }
 
     public void setHasModel(boolean hasModel) {
         this.hasModel = hasModel;
+    }
+
+    public String getModelUrl() {
+        return modelUrl;
+    }
+
+    public void setModelUrl(String modelUrl) {
+        this.modelUrl = modelUrl;
     }
 
     public int getConsumedCredits() {
@@ -129,6 +139,46 @@ public class Model3DJobResponseDTO {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getAuditImagePath() {
+        return auditImagePath;
+    }
+
+    public void setAuditImagePath(String auditImagePath) {
+        this.auditImagePath = auditImagePath;
+    }
+
+    public Integer getImageWidth() {
+        return imageWidth;
+    }
+
+    public void setImageWidth(Integer imageWidth) {
+        this.imageWidth = imageWidth;
+    }
+
+    public Integer getImageHeight() {
+        return imageHeight;
+    }
+
+    public void setImageHeight(Integer imageHeight) {
+        this.imageHeight = imageHeight;
+    }
+
+    public Long getImageSizeBytes() {
+        return imageSizeBytes;
+    }
+
+    public void setImageSizeBytes(Long imageSizeBytes) {
+        this.imageSizeBytes = imageSizeBytes;
+    }
+
+    public String getImageSha256() {
+        return imageSha256;
+    }
+
+    public void setImageSha256(String imageSha256) {
+        this.imageSha256 = imageSha256;
     }
 
     public Instant getCreatedAt() {

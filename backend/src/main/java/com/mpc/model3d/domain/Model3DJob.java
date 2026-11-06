@@ -57,6 +57,21 @@ public class Model3DJob {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @Column(name = "audit_image_path", length = 500)
+    private String auditImagePath;
+
+    @Column(name = "image_width")
+    private Integer imageWidth;
+
+    @Column(name = "image_height")
+    private Integer imageHeight;
+
+    @Column(name = "image_size_bytes")
+    private Long imageSizeBytes;
+
+    @Column(name = "image_sha256", length = 64)
+    private String imageSha256;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -176,6 +191,46 @@ public class Model3DJob {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getAuditImagePath() {
+        return auditImagePath;
+    }
+
+    public void setAuditImagePath(String auditImagePath) {
+        this.auditImagePath = auditImagePath;
+    }
+
+    public Integer getImageWidth() {
+        return imageWidth;
+    }
+
+    public void setImageWidth(Integer imageWidth) {
+        this.imageWidth = imageWidth;
+    }
+
+    public Integer getImageHeight() {
+        return imageHeight;
+    }
+
+    public void setImageHeight(Integer imageHeight) {
+        this.imageHeight = imageHeight;
+    }
+
+    public Long getImageSizeBytes() {
+        return imageSizeBytes;
+    }
+
+    public void setImageSizeBytes(Long imageSizeBytes) {
+        this.imageSizeBytes = imageSizeBytes;
+    }
+
+    public String getImageSha256() {
+        return imageSha256;
+    }
+
+    public void setImageSha256(String imageSha256) {
+        this.imageSha256 = imageSha256;
     }
 
     public Instant getCreatedAt() {

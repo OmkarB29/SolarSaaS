@@ -19,13 +19,18 @@ import {
   Building2,
   HelpCircle,
   UploadCloud,
-  X
+  X,
+  Key,
+  RefreshCw,
+  ExternalLink,
+  Eye
 } from 'lucide-react';
 import { loadGoogleMapsSdk } from '../services/googleMapsLoader';
 import { geocodingService } from '../services/geocodingService';
 import { apiUrl } from '../services/apiConfig';
 import Model3DCanvas from '../components/scene3d/Model3DCanvas';
 import { model3dService } from '../services/model3dService';
+import { authService } from '../services/authService';
 
 // Default initial coordinates: Vidhana Soudha, Bengaluru
 const DEFAULT_CENTER = { lat: 12.9797, lng: 77.5907 };
@@ -117,6 +122,41 @@ export default function Model3DView() {
   const [uploadedPhotoBase64, setUploadedPhotoBase64] = useState(null);
   const [photoSourceMode, setPhotoSourceMode] = useState('google'); // 'google' | 'upload'
   const [jobError, setJobError] = useState('');
+  const [meshyApiKey, setMeshyApiKey] = useState(
+    () => localStorage.getItem('solarscope.meshy.apiKey') || ''
+  );
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false);
+  const [sessionRefreshedNotice, setSessionRefreshedNotice] = useState('');
+
+  // Satellite & Uploaded Image Preview State (Requirement 6)
+  const [previewData, setPreviewData] = useState(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+
+  const handleMeshyApiKeyChange = (val) => {
+    setMeshyApiKey(val);
+    if (val && val.trim()) {
+      localStorage.setItem('solarscope.meshy.apiKey', val.trim());
+    } else {
+      localStorage.removeItem('solarscope.meshy.apiKey');
+    }
+  };
+
+  const handleQuickSessionRefresh = async () => {
+    setIsRefreshingSession(true);
+    setJobError('');
+    try {
+      const refreshed = await authService.loginDemoUser();
+      if (refreshed?.token) {
+        setSessionRefreshedNotice('Session refreshed successfully (Demo User)!');
+        setTimeout(() => setSessionRefreshedNotice(''), 3500);
+      }
+    } catch (err) {
+      setJobError('Could not refresh session: ' + (err.message || 'Network error'));
+    } finally {
+      setIsRefreshingSession(false);
+    }
+  };
 
   // DOM Refs
   const map3dContainerRef = useRef(null);
@@ -650,6 +690,45 @@ export default function Model3DView() {
     reader.readAsDataURL(file);
   };
 
+    // Preview exact satellite imagery or uploaded photo before credits are spent (Requirement 6)
+  const fetchPreview = useCallback(async () => {
+    if (!roofVertices || roofVertices.length < 3) {
+      setPreviewData(null);
+      setPreviewError('Define rooftop polygon with at least 3 vertices first.');
+      return;
+    }
+
+    if (photoSourceMode === 'upload' && !uploadedPhotoBase64) {
+      setPreviewData(null);
+      setPreviewError('Please select an aerial image file to preview.');
+      return;
+    }
+
+    setIsPreviewLoading(true);
+    setPreviewError('');
+
+    try {
+      const result = await model3dService.previewCapture({
+        polygonCoordinates: roofVertices,
+        imageSource: photoSourceMode === 'upload' ? 'UPLOADED' : 'GOOGLE_STATIC',
+        imageBase64: photoSourceMode === 'upload' ? uploadedPhotoBase64 : null,
+      });
+      setPreviewData(result);
+    } catch (err) {
+      console.warn('[Model3DView] Preview capture failed:', err);
+      setPreviewData(null);
+      setPreviewError(err.message || 'Failed to capture real satellite imagery.');
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }, [roofVertices, photoSourceMode, uploadedPhotoBase64]);
+
+  useEffect(() => {
+    if (isConfirmModalOpen) {
+      fetchPreview();
+    }
+  }, [isConfirmModalOpen, fetchPreview]);
+
   // Trigger Meshy AI Generation Task
   const handleStartMeshyGeneration = async () => {
     if (roofVertices.length < 3) {
@@ -673,6 +752,7 @@ export default function Model3DView() {
         roofArea: liveMetrics.netUsableAreaM2 || liveMetrics.grossAreaM2,
         imageSource: photoSourceMode === 'upload' && uploadedPhotoBase64 ? 'UPLOADED' : 'GOOGLE_STATIC',
         imageBase64: photoSourceMode === 'upload' ? uploadedPhotoBase64 : null,
+        meshyApiKey: meshyApiKey?.trim() || undefined,
       };
 
       const job = await model3dService.createJob(jobPayload);
@@ -680,15 +760,17 @@ export default function Model3DView() {
       localStorage.setItem('solarscope.model3dJob', JSON.stringify(job));
       setIsConfirmModalOpen(false);
 
-      // Start polling for job completion
-      model3dService.pollJob(job.id, (updatedJob) => {
-        setActiveJob(updatedJob);
-        if (updatedJob.status === 'SUCCEEDED') {
-          localStorage.setItem('solarscope.model3dJob', JSON.stringify(updatedJob));
-        }
-      }).catch((err) => {
-        setJobError(err.message || 'Model generation polling failed.');
-      });
+      // Start polling for job completion only if pending
+      if (job.status !== 'SUCCEEDED') {
+        model3dService.pollJob(job.id, (updatedJob) => {
+          setActiveJob(updatedJob);
+          if (updatedJob.status === 'SUCCEEDED') {
+            localStorage.setItem('solarscope.model3dJob', JSON.stringify(updatedJob));
+          }
+        }).catch((err) => {
+          console.warn('[Model3DView] Background polling warning:', err);
+        });
+      }
     } catch (err) {
       setJobError(err.message || 'Failed to trigger 3D model generation job.');
     } finally {
@@ -1041,8 +1123,8 @@ export default function Model3DView() {
 
       {/* ─── MESHY AI GENERATION CONFIRMATION MODAL ─── */}
       {isConfirmModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-slate-100 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-slate-100 shadow-2xl relative my-8">
             <button
               type="button"
               onClick={() => setIsConfirmModalOpen(false)}
@@ -1060,24 +1142,8 @@ export default function Model3DView() {
               Meshy AI will convert your top-down rooftop satellite perspective into an interactive 3D mesh model.
             </p>
 
-            {/* Credit Cost Box */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 mb-4 text-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Estimated Credit Cost:</span>
-                <span className="font-bold text-amber-400">~5–10 credits</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Target Polycount:</span>
-                <span className="text-slate-200">60,000 triangles</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Engine:</span>
-                <span className="text-slate-200">Meshy 7.1 Flagship</span>
-              </div>
-            </div>
-
             {/* Imagery Source Choice (Google Static vs Uploaded Aerial) */}
-            <div className="space-y-2 mb-5 text-xs">
+            <div className="space-y-2 mb-4 text-xs">
               <span className="text-slate-400 font-medium">Imagery Source:</span>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -1090,7 +1156,7 @@ export default function Model3DView() {
                   }`}
                 >
                   <p className="font-semibold text-2xs">Top-Down Satellite</p>
-                  <p className="text-3xs text-slate-400 mt-0.5">Automated map capture</p>
+                  <p className="text-3xs text-slate-400 mt-0.5">Real Google Maps capture</p>
                 </button>
 
                 <button
@@ -1112,7 +1178,7 @@ export default function Model3DView() {
                   <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-700 rounded-lg cursor-pointer hover:border-slate-500 transition">
                     <UploadCloud size={20} className="text-slate-400 mb-1" />
                     <span className="text-2xs text-slate-300 font-medium">
-                      {uploadedPhotoFile ? uploadedPhotoFile.name : 'Select aerial photo (max 20MB)'}
+                      {uploadedPhotoFile ? uploadedPhotoFile.name : 'Select aerial photo (min 512px, max 20MB)'}
                     </span>
                     <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                   </label>
@@ -1120,21 +1186,196 @@ export default function Model3DView() {
               )}
             </div>
 
-            {jobError && (
-              <div className="mb-4 p-2.5 bg-rose-950/80 border border-rose-700 rounded-lg text-rose-200 text-xs">
-                {jobError}
+            {/* ─── REAL SATELLITE / UPLOADED AERIAL PREVIEW (Requirement 6 & 8) ─── */}
+            <div className="mb-4 bg-slate-950 border border-slate-800 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Eye size={12} className="text-blue-400" />
+                  <span>Exact Image Sent to Meshy AI</span>
+                </span>
+                {previewData && (
+                  <span className="text-3xs px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-700/60 text-emerald-300 font-medium">
+                    Unmodified Bytes
+                  </span>
+                )}
+              </div>
+
+              {isPreviewLoading ? (
+                <div className="flex flex-col items-center justify-center py-8 text-slate-400 space-y-2">
+                  <Loader2 size={22} className="animate-spin text-blue-500" />
+                  <span className="text-xs">Capturing top-down satellite perspective...</span>
+                  <span className="text-3xs text-slate-500">Checking zoom and color variance guards</span>
+                </div>
+              ) : previewError ? (
+                <div className="p-3 rounded-lg bg-rose-950/70 border border-rose-800 text-rose-200 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-rose-300">
+                    <AlertTriangle size={14} />
+                    <span>Capture / Guard Rejection</span>
+                  </div>
+                  <p className="text-2xs text-rose-200 leading-relaxed">{previewError}</p>
+                  <button
+                    type="button"
+                    onClick={fetchPreview}
+                    className="mt-2 text-3xs font-semibold text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                  >
+                    Retry Capture
+                  </button>
+                </div>
+              ) : previewData ? (
+                <div className="space-y-2.5">
+                  <div className="relative rounded-lg overflow-hidden border border-slate-800 bg-black aspect-video flex items-center justify-center">
+                    <img
+                      src={previewData.imageBase64}
+                      alt="Satellite Rooftop Capture"
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded text-3xs font-mono text-white">
+                      Zoom {previewData.zoom || 20}
+                    </div>
+                  </div>
+
+                  {/* Metadata Badges */}
+                  <div className="grid grid-cols-2 gap-2 text-3xs">
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-2">
+                      <span className="text-slate-400 block">Dimensions</span>
+                      <span className="text-slate-100 font-bold font-mono text-2xs">
+                        {previewData.width} × {previewData.height} px
+                      </span>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-2">
+                      <span className="text-slate-400 block">Audited File Size</span>
+                      <span className="text-slate-100 font-bold font-mono text-2xs">
+                        {previewData.sizeFormatted || `${Math.round(previewData.sizeBytes / 1024)} KB`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-3xs space-y-0.5">
+                    <span className="text-slate-400 block">SHA-256 Fingerprint:</span>
+                    <span className="font-mono text-slate-300 break-all text-3xs select-all">
+                      {previewData.sha256}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  Select rooftop and open preview to capture satellite image.
+                </div>
+              )}
+            </div>
+
+            {/* Credit Cost Box */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 mb-4 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Estimated Credit Cost:</span>
+                <span className="font-bold text-amber-400">~5–10 credits</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Target Polycount:</span>
+                <span className="text-slate-200">60,000 triangles</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Engine:</span>
+                <span className="text-slate-200">Meshy 7.1 Flagship</span>
+              </div>
+            </div>
+
+            {/* Meshy AI API Key Config (Direct Mode / Developer Key) */}
+            <div className="space-y-1.5 mb-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                  <Key size={13} className="text-amber-400" />
+                  <span>Meshy API Key (Direct Cloud)</span>
+                </span>
+                <a
+                  href="https://www.meshy.ai/workspace"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-3xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition"
+                  title="Open Meshy Developers Workspace"
+                >
+                  <span>Developers Portal</span>
+                  <ExternalLink size={10} />
+                </a>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="password"
+                  placeholder="msy_... (or leave empty for Automated Twin)"
+                  value={meshyApiKey}
+                  onChange={(e) => handleMeshyApiKeyChange(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-3xs text-slate-400 pt-0.5">
+                <span>
+                  {meshyApiKey?.trim().startsWith('msy_') ? (
+                    <span className="text-emerald-400 font-semibold">✓ Custom Meshy 7.1 Key Active</span>
+                  ) : (
+                    <span>Auto Twin / Cloud Backend Mode</span>
+                  )}
+                </span>
+                {meshyApiKey && (
+                  <button
+                    type="button"
+                    onClick={() => handleMeshyApiKeyChange('')}
+                    className="text-slate-500 hover:text-slate-300"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Session Refresh Helper Banner */}
+            <div className="mb-4 flex items-center justify-between p-2 rounded-lg bg-slate-950/70 border border-slate-800 text-3xs text-slate-400">
+              <span>Cloud Session:</span>
+              <button
+                type="button"
+                onClick={handleQuickSessionRefresh}
+                disabled={isRefreshingSession}
+                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-semibold cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={isRefreshingSession ? 'animate-spin' : ''} />
+                <span>{isRefreshingSession ? 'Refreshing...' : 'Quick Refresh Session'}</span>
+              </button>
+            </div>
+
+            {sessionRefreshedNotice && (
+              <div className="mb-4 p-2 bg-emerald-950/70 border border-emerald-600 rounded-lg text-emerald-300 text-xs text-center font-medium">
+                {sessionRefreshedNotice}
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleStartMeshyGeneration}
-              disabled={isGenerating}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              <span>{isGenerating ? 'Initiating Task...' : 'Confirm & Generate Model'}</span>
-            </button>
+            {jobError && (
+              <div className="mb-4 p-2.5 bg-rose-950/80 border border-rose-700 rounded-lg text-rose-200 text-xs space-y-1">
+                <p className="font-medium">{jobError}</p>
+                <p className="text-3xs text-rose-300">Tip: Click "Quick Refresh Session" above or enter your Meshy API Key from the Developers tab.</p>
+              </div>
+            )}
+
+            {/* Action Buttons: Cancel (Requirement 6) and Confirm */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartMeshyGeneration}
+                disabled={isGenerating || isPreviewLoading || !previewData || Boolean(previewError)}
+                className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                <span>{isGenerating ? 'Initiating Task...' : 'Confirm & Generate Model'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

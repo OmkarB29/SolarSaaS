@@ -1,9 +1,11 @@
 package com.mpc.model3d.service;
 
 import com.mpc.model3d.config.MeshyModel3DProperties;
+import com.mpc.model3d.config.RooftopProperties;
 import com.mpc.model3d.domain.Model3DJob;
 import com.mpc.model3d.domain.Model3DStatus;
 import com.mpc.model3d.repository.Model3DJobRepository;
+import com.mpc.model3d.service.image.CapturedImageResult;
 import com.mpc.model3d.service.image.RooftopImageProvider;
 import com.mpc.model3d.service.storage.GlbStorageService;
 import com.mpc.model3d.web.dto.Model3DJobRequestDTO;
@@ -29,6 +31,7 @@ class Model3DServiceTest {
     private Model3DJobRepository jobRepository;
     private MeshyClient meshyClient;
     private MeshyModel3DProperties meshyProperties;
+    private RooftopProperties rooftopProperties;
     private GlbStorageService glbStorageService;
     private RooftopImageProvider googleStaticMapsProvider;
     private RooftopImageProvider uploadedImageProvider;
@@ -45,16 +48,18 @@ class Model3DServiceTest {
         uploadedImageProvider = mock(RooftopImageProvider.class);
 
         meshyProperties = new MeshyModel3DProperties();
-        meshyProperties.setMockEnabled(true);
         meshyProperties.setMaxJobsPerUserPerDay(10);
         meshyProperties.setMaxGlobalJobsPerDay(50);
         meshyProperties.setAiModel("meshy-7.1");
         meshyProperties.setTargetPolycount(60000);
 
+        rooftopProperties = new RooftopProperties();
+
         model3DService = new Model3DService(
                 jobRepository,
                 meshyClient,
                 meshyProperties,
+                rooftopProperties,
                 glbStorageService,
                 googleStaticMapsProvider,
                 uploadedImageProvider
@@ -74,7 +79,7 @@ class Model3DServiceTest {
         );
 
         List<List<Double>> coords2 = List.of(
-                List.of(12.97160049, 77.59460021), // same rounded to 6 decimals
+                List.of(12.97160049, 77.59460021),
                 List.of(12.97180051, 77.59460019),
                 List.of(12.97180081, 77.59490041)
         );
@@ -83,7 +88,7 @@ class Model3DServiceTest {
         String hash2 = model3DService.computePolygonHash(coords2, "meshy-7.1", 60000, "GOOGLE_STATIC");
 
         assertThat(hash1).isNotEmpty();
-        assertThat(hash1).hasSize(64); // SHA-256 hex string length
+        assertThat(hash1).hasSize(64);
         assertThat(hash1).isEqualTo(hash2);
     }
 
@@ -97,7 +102,6 @@ class Model3DServiceTest {
 
         String hash = model3DService.computePolygonHash(coords, "meshy-7.1", 60000, "GOOGLE_STATIC");
 
-        // Create temporary real file to satisfy Files.exists
         Path tempGlb = Files.createTempFile("cached_model", ".glb");
         tempGlb.toFile().deleteOnExit();
 
@@ -120,7 +124,6 @@ class Model3DServiceTest {
         assertThat(result.getId()).isEqualTo(55L);
         assertThat(result.getStatus()).isEqualTo(Model3DStatus.SUCCEEDED);
 
-        // Verify meshy client was NEVER called
         verify(meshyClient, never()).createImageTo3DTask(anyString());
         verify(jobRepository, never()).save(any(Model3DJob.class));
     }
@@ -134,7 +137,7 @@ class Model3DServiceTest {
         );
 
         when(jobRepository.countByUserIdAndCreatedAtAfter(eq(101L), any(Instant.class)))
-                .thenReturn(10L); // Limit is 10
+                .thenReturn(10L);
 
         Model3DJobRequestDTO request = new Model3DJobRequestDTO();
         request.setPolygonCoordinates(coords);

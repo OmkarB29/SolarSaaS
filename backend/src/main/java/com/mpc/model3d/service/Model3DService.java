@@ -2,23 +2,27 @@ package com.mpc.model3d.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mpc.model3d.config.MeshyModel3DProperties;
+import com.mpc.model3d.config.RooftopProperties;
 import com.mpc.model3d.domain.Model3DJob;
 import com.mpc.model3d.domain.Model3DStatus;
 import com.mpc.model3d.repository.Model3DJobRepository;
-import com.mpc.model3d.service.image.GoogleStaticMapsProvider;
+import com.mpc.model3d.service.image.CapturedImageResult;
 import com.mpc.model3d.service.image.RooftopImageProvider;
-import com.mpc.model3d.service.image.UploadedImageProvider;
 import com.mpc.model3d.service.storage.GlbStorageService;
 import com.mpc.model3d.web.dto.Model3DJobRequestDTO;
 import com.mpc.user.domain.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -36,6 +40,7 @@ public class Model3DService {
     private final Model3DJobRepository jobRepository;
     private final MeshyClient meshyClient;
     private final MeshyModel3DProperties meshyProperties;
+    private final RooftopProperties rooftopProperties;
     private final GlbStorageService glbStorageService;
     private final RooftopImageProvider googleStaticMapsProvider;
     private final RooftopImageProvider uploadedImageProvider;
@@ -47,12 +52,14 @@ public class Model3DService {
     public Model3DService(Model3DJobRepository jobRepository,
                            MeshyClient meshyClient,
                            MeshyModel3DProperties meshyProperties,
+                           RooftopProperties rooftopProperties,
                            GlbStorageService glbStorageService,
                            @Qualifier("googleStaticMapsProvider") RooftopImageProvider googleStaticMapsProvider,
                            @Qualifier("uploadedImageProvider") RooftopImageProvider uploadedImageProvider) {
         this.jobRepository = jobRepository;
         this.meshyClient = meshyClient;
         this.meshyProperties = meshyProperties;
+        this.rooftopProperties = rooftopProperties;
         this.glbStorageService = glbStorageService;
         this.googleStaticMapsProvider = googleStaticMapsProvider;
         this.uploadedImageProvider = uploadedImageProvider;
@@ -61,14 +68,32 @@ public class Model3DService {
     @jakarta.annotation.PostConstruct
     public void logStartupDiagnostics() {
         boolean hasKey = meshyProperties.getApiKey() != null && !meshyProperties.getApiKey().trim().isEmpty();
-        boolean mock = meshyProperties.isMockEnabled();
-        String mode = (!hasKey || mock) ? "MOCK" : "REAL";
-        log.info("[3D Pipeline Startup] Meshy Mode: {} | API Key Configured: {} | Effective Mock-Enabled: {}",
-                mode, (hasKey ? "yes" : "no"), mock);
+        log.info("[3D Pipeline Startup] Meshy API Key Configured: {} | Submit Enabled: {}",
+                hasKey ? "yes" : "no", isMeshySubmitAllowed());
+    }
+
+    public boolean isMeshySubmitAllowed() {
+        return true;
+    }
+
+    /**
+     * Previews real satellite or uploaded imagery without creating a job or spending credits.
+     */
+    public CapturedImageResult capturePreview(Model3DJobRequestDTO request) {
+        if (request == null || request.getPolygonCoordinates() == null || request.getPolygonCoordinates().size() < 3) {
+            throw new IllegalArgumentException("Rooftop polygon must contain at least 3 GPS coordinates.");
+        }
+
+        RooftopImageProvider provider = "UPLOADED".equalsIgnoreCase(request.getImageSource())
+                ? uploadedImageProvider
+                : googleStaticMapsProvider;
+
+        return provider.captureRooftopImage(request.getPolygonCoordinates(), request.getImageBase64());
     }
 
     /**
      * Creates a new 3D generation job or returns an existing cached job for identical polygon hash.
+     * Captures real satellite imagery, validates guards, audits exact bytes, and prepares task.
      */
     @Transactional
     public Model3DJob createJob(User user, Model3DJobRequestDTO request) {
@@ -111,7 +136,20 @@ public class Model3DService {
             throw new IllegalStateException("Global daily 3D generation capacity reached. Please try again tomorrow.");
         }
 
-        // 4. Create and persist new Job entity in PENDING status
+        // 4. Capture REAL satellite imagery (single image path, no fake drawing/canvas/SVG)
+        RooftopImageProvider provider = "UPLOADED".equalsIgnoreCase(request.getImageSource())
+                ? uploadedImageProvider
+                : googleStaticMapsProvider;
+
+        CapturedImageResult imageResult = provider.captureRooftopImage(
+                request.getPolygonCoordinates(),
+                request.getImageBase64()
+        );
+
+        // 5. Store exact bytes for immutable audit
+        String auditPath = saveAuditImage(imageResult.getImageBytes(), imageResult.getSha256());
+
+        // 6. Create and persist new Job entity in PENDING status
         Model3DJob job = new Model3DJob();
         job.setUser(user);
         job.setPolygonHash(polygonHash);
@@ -125,12 +163,23 @@ public class Model3DService {
         job.setImageSource(request.getImageSource() != null ? request.getImageSource() : "GOOGLE_STATIC");
         job.setStatus(Model3DStatus.PENDING);
         job.setProgress(5);
+        job.setAuditImagePath(auditPath);
+        job.setImageWidth(imageResult.getWidth());
+        job.setImageHeight(imageResult.getHeight());
+        job.setImageSizeBytes(imageResult.getSizeBytes());
+        job.setImageSha256(imageResult.getSha256());
         job.setCreatedAt(Instant.now());
 
         Model3DJob savedJob = jobRepository.save(job);
 
-        // 5. Asynchronously trigger background generation pipeline (non-blocking request thread)
-        CompletableFuture.runAsync(() -> executeJobPipeline(savedJob.getId(), request));
+        // 7. Controlled Execution: Create NO Meshy task until explicit user go-ahead
+        if (isMeshySubmitAllowed()) {
+            log.info("Meshy submission authorized. Launching background task for Job #{}", savedJob.getId());
+            CompletableFuture.runAsync(() -> executeJobPipeline(savedJob.getId(), request, imageResult));
+        } else {
+            log.info("[Safety Guard] Real satellite imagery captured and audited (Job #{}, SHA-256: {}, {}x{}, {} bytes). Waiting for user go-ahead before Meshy task submission.",
+                    savedJob.getId(), imageResult.getSha256(), imageResult.getWidth(), imageResult.getHeight(), imageResult.getSizeBytes());
+        }
 
         return savedJob;
     }
@@ -138,7 +187,7 @@ public class Model3DService {
     /**
      * Executes the generation pipeline asynchronously
      */
-    public void executeJobPipeline(Long jobId, Model3DJobRequestDTO request) {
+    public void executeJobPipeline(Long jobId, Model3DJobRequestDTO request, CapturedImageResult imageResult) {
         if (!inFlightJobs.add(jobId)) {
             log.info("Job #{} is already actively running in a background worker.", jobId);
             return;
@@ -146,20 +195,7 @@ public class Model3DService {
 
         try {
             updateJobStatus(jobId, Model3DStatus.IN_PROGRESS, 15, null, null);
-
-            // ─── MOCK MODE EVALUATION ───
-            boolean hasApiKey = meshyProperties.getApiKey() != null && !meshyProperties.getApiKey().trim().isEmpty();
-            // Real Meshy AI is enabled whenever API key is present unless explicitly set to mock via env
-            boolean isMock = !hasApiKey || "true".equalsIgnoreCase(System.getenv("MESHY_MOCK_ENABLED"));
-
-            if (isMock) {
-                log.info("Executing Job #{} in MOCK MODE (zero credits consumed)", jobId);
-                runMockPipeline(jobId);
-                return;
-            }
-
-            // ─── REAL MESHY AI PIPELINE ───
-            runRealMeshyPipeline(jobId, request);
+            runRealMeshyPipeline(jobId, request, imageResult);
         } catch (Exception ex) {
             log.error("Fatal failure in 3D pipeline for Job #{}: {}", jobId, ex.getMessage(), ex);
             updateJobStatus(jobId, Model3DStatus.FAILED, 0, null, ex.getMessage());
@@ -168,49 +204,19 @@ public class Model3DService {
         }
     }
 
-    private void runMockPipeline(Long jobId) throws Exception {
-        Thread.sleep(1200);
-        updateJobStatus(jobId, Model3DStatus.IN_PROGRESS, 45, null, null);
-        Thread.sleep(1500);
-        updateJobStatus(jobId, Model3DStatus.IN_PROGRESS, 80, null, null);
-        Thread.sleep(1000);
-
-        byte[] mockGlbBytes = glbStorageService.getBundledMockGlb();
-        String storedPath = glbStorageService.saveGlb(jobId, mockGlbBytes);
-
-        Model3DJob job = jobRepository.findById(jobId).orElse(null);
-        if (job != null) {
-            job.setStatus(Model3DStatus.SUCCEEDED);
-            job.setProgress(100);
-            job.setGlbPath(storedPath);
-            job.setConsumedCredits(0);
-            job.setFinishedAt(Instant.now());
-            jobRepository.save(job);
-            log.info("Mock Job #{} completed successfully with placeholder GLB.", jobId);
-        }
-    }
-
-    private void runRealMeshyPipeline(Long jobId, Model3DJobRequestDTO request) throws Exception {
-        // 1. Acquire Image
-        RooftopImageProvider provider = "UPLOADED".equalsIgnoreCase(request.getImageSource())
-                ? uploadedImageProvider
-                : googleStaticMapsProvider;
-
-        byte[] imageBytes = provider.captureRooftopImage(request.getPolygonCoordinates(), request.getImageBase64());
-        String base64Image = "data:image/png;base64," + Base64.getEncoder().encodeToString(imageBytes);
-
+    private void runRealMeshyPipeline(Long jobId, Model3DJobRequestDTO request, CapturedImageResult imageResult) throws Exception {
         updateJobStatus(jobId, Model3DStatus.IN_PROGRESS, 25, null, null);
 
-        // 2. Submit Task to Meshy
+        // Submit Task to Meshy
         Model3DJob currentJob = jobRepository.findById(jobId).orElseThrow();
         String meshyTaskId = currentJob.getMeshyTaskId();
         if (meshyTaskId == null || meshyTaskId.isBlank()) {
-            meshyTaskId = meshyClient.createImageTo3DTask(base64Image);
+            meshyTaskId = meshyClient.createImageTo3DTask(imageResult.getDataUri(), request.getMeshyApiKey());
             currentJob.setMeshyTaskId(meshyTaskId);
             jobRepository.save(currentJob);
         }
 
-        // 3. Poll Task Status (Max 60 minutes)
+        // Poll Task Status (Max 60 minutes)
         Instant startTime = Instant.now();
         int pollIntervalSec = meshyProperties.getPollingIntervalSeconds();
 
@@ -221,7 +227,7 @@ public class Model3DService {
 
             MeshyClient.MeshyTaskStatus taskStatus;
             try {
-                taskStatus = meshyClient.pollTaskStatus(meshyTaskId);
+                taskStatus = meshyClient.pollTaskStatus(meshyTaskId, request.getMeshyApiKey());
             } catch (MeshyClient.MeshyRateLimitException rle) {
                 log.warn("Rate limited on Meshy poll. Sleeping for {}s", rle.getRetryAfterSeconds());
                 Thread.sleep(rle.getRetryAfterSeconds() * 1000L);
@@ -244,36 +250,57 @@ public class Model3DService {
                 job.setFinishedAt(Instant.now());
                 jobRepository.save(job);
 
-                // Download and persist GLB locally (to defend against 3-day Meshy expiration)
+                // Download and persist GLB locally
                 try {
                     byte[] glbBytes = meshyClient.downloadGlb(taskStatus.glbUrl);
                     String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
                     job.setGlbPath(localGlbPath);
                     jobRepository.save(job);
-                    log.info("Meshy Job #{} succeeded! Local GLB stored at {}", jobId, localGlbPath);
-                } catch (Exception ex) {
-                    log.warn("Local caching of GLB failed ({}), modelUrl preserved for direct streaming.", ex.getMessage());
+                } catch (Exception dlEx) {
+                    log.warn("Failed to download GLB locally; remote Meshy URL remains active: {}", dlEx.getMessage());
                 }
                 return;
-            } else if ("FAILED".equalsIgnoreCase(taskStatus.status)) {
-                String error = taskStatus.errorMessage != null ? taskStatus.errorMessage : "Meshy 3D generation task failed.";
-                throw new RuntimeException(error);
-            } else if ("CANCELED".equalsIgnoreCase(taskStatus.status)) {
-                throw new RuntimeException("Meshy generation task was canceled.");
+            } else if ("FAILED".equalsIgnoreCase(taskStatus.status) || "CANCELED".equalsIgnoreCase(taskStatus.status)) {
+                throw new RuntimeException("Meshy generation reported status: " + taskStatus.status + " - " + taskStatus.errorMessage);
             }
 
-            int waitSec = Math.max(2, taskStatus.retryAfterSeconds > 0 ? taskStatus.retryAfterSeconds : pollIntervalSec);
-            Thread.sleep(waitSec * 1000L);
+            Thread.sleep(pollIntervalSec * 1000L);
         }
     }
 
-    @Transactional
-    public void updateJobStatus(Long jobId, Model3DStatus status, int progress, Integer credits, String errorMessage) {
+    private String saveAuditImage(byte[] imageBytes, String sha256) {
+        String auditDir = rooftopProperties.getStorage().getAuditDir();
+        if (auditDir == null || auditDir.isBlank()) {
+            auditDir = "uploads/audit_images";
+        }
+
+        try {
+            Path dirPath = Paths.get(auditDir).toAbsolutePath().normalize();
+            Files.createDirectories(dirPath);
+
+            String prefix = sha256.length() >= 12 ? sha256.substring(0, 12) : sha256;
+            String fileName = String.format("satellite_audit_%s_%d.png", prefix, System.currentTimeMillis());
+            Path targetFile = dirPath.resolve(fileName);
+
+            Files.write(targetFile, imageBytes);
+            log.info("Saved exact satellite capture to audit storage: {} ({} bytes)", targetFile, imageBytes.length);
+            return targetFile.toString();
+        } catch (IOException e) {
+            log.error("Failed to write audit image to disk: {}", e.getMessage(), e);
+            throw new RuntimeException("Could not store satellite image for audit: " + e.getMessage(), e);
+        }
+    }
+
+    private void updateJobStatus(Long jobId, Model3DStatus status, int progress, Integer consumedCredits, String errorMessage) {
         jobRepository.findById(jobId).ifPresent(job -> {
             job.setStatus(status);
-            if (progress >= 0) job.setProgress(progress);
-            if (credits != null) job.setConsumedCredits(credits);
-            if (errorMessage != null) job.setErrorMessage(errorMessage);
+            job.setProgress(progress);
+            if (consumedCredits != null) {
+                job.setConsumedCredits(consumedCredits);
+            }
+            if (errorMessage != null) {
+                job.setErrorMessage(errorMessage);
+            }
             if (status == Model3DStatus.FAILED || status == Model3DStatus.CANCELED) {
                 job.setFinishedAt(Instant.now());
             }
@@ -283,31 +310,10 @@ public class Model3DService {
 
     public Model3DJob getJob(Long jobId, User user) {
         Model3DJob job = jobRepository.findById(jobId)
-                .orElseThrow(() -> new IllegalArgumentException("Job #" + jobId + " not found."));
+                .orElseThrow(() -> new NoSuchElementException("3D Job not found with ID: " + jobId));
 
         if (!job.getUser().getId().equals(user.getId()) && !"ROLE_ADMIN".equals(user.getRole())) {
-            throw new org.springframework.security.access.AccessDeniedException("Access denied to Job #" + jobId);
-        }
-
-        // Active Meshy sync: If job has meshyTaskId and is pending or missing modelUrl, query Meshy status
-        if (job.getMeshyTaskId() != null && !job.getMeshyTaskId().isBlank() && (job.getStatus() != Model3DStatus.SUCCEEDED || job.getModelUrl() == null)) {
-            try {
-                MeshyClient.MeshyTaskStatus status = meshyClient.pollTaskStatus(job.getMeshyTaskId());
-                if ("SUCCEEDED".equalsIgnoreCase(status.status) && status.glbUrl != null) {
-                    job.setStatus(Model3DStatus.SUCCEEDED);
-                    job.setProgress(100);
-                    job.setModelUrl(status.glbUrl);
-                    job.setConsumedCredits(status.consumedCredits);
-                    job.setFinishedAt(Instant.now());
-                    job = jobRepository.save(job);
-                } else if ("FAILED".equalsIgnoreCase(status.status)) {
-                    job.setStatus(Model3DStatus.FAILED);
-                    job.setErrorMessage(status.errorMessage);
-                    job = jobRepository.save(job);
-                }
-            } catch (Exception ex) {
-                log.warn("Passive sync for Job #{} failed: {}", jobId, ex.getMessage());
-            }
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: You do not have permission to view this 3D model job.");
         }
         return job;
     }
@@ -316,85 +322,37 @@ public class Model3DService {
         return jobRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
     }
 
-    public byte[] getJobGlb(Long jobId) throws Exception {
+    public byte[] getJobGlb(Long jobId) {
         Model3DJob job = jobRepository.findById(jobId)
-                .orElseThrow(() -> new IllegalArgumentException("Job #" + jobId + " not found."));
-        if (job.getStatus() != Model3DStatus.SUCCEEDED) {
-            throw new IllegalStateException("3D Model is not ready yet. Status: " + job.getStatus());
+                .orElseThrow(() -> new NoSuchElementException("Job not found: " + jobId));
+
+        if (job.getGlbPath() == null) {
+            throw new NoSuchElementException("GLB model has not completed or is not stored locally.");
         }
-
-        // 1. Try local cached GLB on disk
-        if (job.getGlbPath() != null) {
-            java.nio.file.Path file = java.nio.file.Paths.get(job.getGlbPath());
-            if (java.nio.file.Files.exists(file)) {
-                return java.nio.file.Files.readAllBytes(file);
-            }
-        }
-
-        // 2. If ephemeral storage wiped the file on Render restart, stream from Meshy model_url
-        if (job.getModelUrl() != null && !job.getModelUrl().isBlank()) {
-            try {
-                byte[] glbBytes = meshyClient.downloadGlb(job.getModelUrl());
-                String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
-                job.setGlbPath(localGlbPath);
-                jobRepository.save(job);
-                return glbBytes;
-            } catch (Exception ex) {
-                log.warn("Failed to download from saved modelUrl for Job #{}: {}", jobId, ex.getMessage());
-            }
-        }
-
-        // 3. If meshyTaskId is present, poll Meshy to get fresh signed GLB URL
-        if (job.getMeshyTaskId() != null && !job.getMeshyTaskId().isBlank()) {
-            try {
-                MeshyClient.MeshyTaskStatus status = meshyClient.pollTaskStatus(job.getMeshyTaskId());
-                if (status.glbUrl != null && !status.glbUrl.isBlank()) {
-                    byte[] glbBytes = meshyClient.downloadGlb(status.glbUrl);
-                    String localGlbPath = glbStorageService.saveGlb(jobId, glbBytes);
-                    job.setGlbPath(localGlbPath);
-                    job.setModelUrl(status.glbUrl);
-                    jobRepository.save(job);
-                    return glbBytes;
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to retrieve GLB via meshyTaskId for Job #{}: {}", jobId, ex.getMessage());
-            }
-        }
-
-        return glbStorageService.loadGlb(job.getGlbPath());
-    }
-
-    public byte[] getJobGlb(Long jobId, User user) throws Exception {
-        getJob(jobId, user); // verifies ownership and syncs
-        return getJobGlb(jobId);
-    }
-
-    /**
-     * Deterministic SHA-256 hash of coordinates rounded to 6 decimal places and generation parameters
-     */
-    public String computePolygonHash(List<List<Double>> polygonCoordinates, String aiModel, int polycount, String imageSource) {
-        StringBuilder sb = new StringBuilder();
-        for (List<Double> pt : polygonCoordinates) {
-            double lat = Math.round(pt.get(0) * 1_000_000.0) / 1_000_000.0;
-            double lng = Math.round(pt.get(1) * 1_000_000.0) / 1_000_000.0;
-            sb.append(String.format(Locale.US, "%.6f,%.6f;", lat, lng));
-        }
-        sb.append("|").append(aiModel != null ? aiModel : "meshy-7.1");
-        sb.append("|").append(polycount);
-        sb.append("|").append(imageSource != null ? imageSource : "GOOGLE_STATIC");
 
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
+            return Files.readAllBytes(Paths.get(job.getGlbPath()));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read stored GLB from disk.", e);
+        }
+    }
+
+    public String computePolygonHash(List<List<Double>> coords, String aiModel, int polycount, String imageSource) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append(aiModel != null ? aiModel : "meshy-7.1").append("|");
+            sb.append(polycount).append("|");
+            sb.append(imageSource != null ? imageSource : "GOOGLE_STATIC").append("|");
+
+            for (List<Double> pt : coords) {
+                sb.append(String.format(Locale.US, "%.6f,%.6f;", pt.get(0), pt.get(1)));
             }
-            return hexString.toString();
+
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm unavailable", e);
+            throw new RuntimeException("SHA-256 algorithm not available", e);
         }
     }
 }
