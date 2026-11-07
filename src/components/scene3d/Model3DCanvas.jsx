@@ -107,13 +107,32 @@ function GlbMeshModel({
   scale,
   rotationDeg,
   elevation,
-  buildingHeight = 3.5,
   solidMode = false,
   showEdges = true,
   solidColor = '#cbd5e1',
   wireframe = false,
 }) {
   const { scene } = useGLTF(url);
+
+  // Auto-normalize raw GLTF dimensions to fill the viewing screen prominently
+  const autoFitScale = useMemo(() => {
+    try {
+      const box = new THREE.Box3().setFromObject(scene);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      // Meshy GLTF files are unit-normalized (~1.0 to 2.0 units).
+      // Scale to 18.0 units so the model fills ~75% of the screen by default.
+      if (maxDim > 0.001) {
+        return 18.0 / maxDim;
+      }
+    } catch {
+      // ignore
+    }
+    return 15.0;
+  }, [scene]);
+
+  const effectiveScale = autoFitScale * scale;
 
   const displayScene = useMemo(() => {
     // Deep clone the scene to allow safe material and edge overrides
@@ -167,11 +186,11 @@ function GlbMeshModel({
 
   return (
     <group
-      position={[0, buildingHeight + elevation, 0]}
+      position={[0, elevation, 0]}
       rotation={[0, (rotationDeg * Math.PI) / 180, 0]}
-      scale={[scale, scale, scale]}
+      scale={[effectiveScale, effectiveScale, effectiveScale]}
     >
-      <Center top>
+      <Center bottom>
         <primitive object={displayScene} />
       </Center>
     </group>
@@ -431,10 +450,10 @@ export default function Model3DCanvas({
   className = '',
   initialSolidMode = false,
 }) {
-  // Layer Toggles
+  // Layer Toggles (Default to showing ONLY the generated 3D model without solar plates below)
   const [showAiModel, setShowAiModel] = useState(true);
-  const [showMeasuredBoundary, setShowMeasuredBoundary] = useState(true);
-  const [showPanelLayout, setShowPanelLayout] = useState(true);
+  const [showMeasuredBoundary, setShowMeasuredBoundary] = useState(false);
+  const [showPanelLayout, setShowPanelLayout] = useState(false);
 
   // Solid Mode & Shading Controls
   const [solidMode, setSolidMode] = useState(initialSolidMode);
@@ -827,13 +846,13 @@ export default function Model3DCanvas({
       <div className={`relative w-full ${isFullscreen ? 'flex-1 min-h-[450px]' : canvasHeight} bg-gradient-to-b from-slate-900 to-slate-950`}>
         <CanvasErrorBoundary>
           <Canvas
-            camera={{ position: [0, 35, 45], fov: 45 }}
+            camera={{ position: [0, 15, 24], fov: 42 }}
             shadows
             className="w-full h-full"
           >
             <ambientLight intensity={solidMode ? 0.95 : 0.9} />
             <directionalLight
-              position={[25, 45, 25]}
+              position={[20, 35, 20]}
               intensity={solidMode ? 1.4 : 1.5}
               castShadow
               shadow-mapSize-width={1024}
@@ -841,12 +860,12 @@ export default function Model3DCanvas({
             />
             {/* Soft fill light to illuminate opposite roof pitch facets */}
             <directionalLight
-              position={[-25, 30, -25]}
+              position={[-20, 25, -20]}
               intensity={solidMode ? 0.6 : 0.3}
             />
-            <gridHelper args={[100, 100, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
+            <gridHelper args={[50, 50, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
 
-            <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+            <OrbitControls makeDefault enableDamping dampingFactor={0.05} target={[0, 4, 0]} />
 
             {/* Layer 1: AI Generated Model (Protected with SceneErrorBoundary) */}
             {showAiModel && modelGlbUrl && (
@@ -857,7 +876,6 @@ export default function Model3DCanvas({
                     scale={scaleFactor}
                     rotationDeg={rotationDeg}
                     elevation={elevation}
-                    buildingHeight={buildingHeight}
                     solidMode={solidMode}
                     showEdges={showEdges}
                     solidColor={solidColor}
@@ -867,8 +885,8 @@ export default function Model3DCanvas({
               </SceneErrorBoundary>
             )}
 
-            {/* Layer 2: Measured Roof Boundary & Obstacles */}
-            {showMeasuredBoundary && (
+            {/* Layer 2: Measured Roof Boundary (Hidden when 3D Model is active to keep screen clean) */}
+            {showMeasuredBoundary && !modelGlbUrl && (
               <MeasuredRooftopLayer
                 localVertices={localVertices}
                 obstaclesLocal={obstaclesLocal}
@@ -878,8 +896,8 @@ export default function Model3DCanvas({
               />
             )}
 
-            {/* Layer 3: Measured Solar Panel Layout (Synchronized with AI Panel Optimizer & Height Grid) */}
-            {showPanelLayout && (
+            {/* Layer 3: Measured Solar Panel Layout (Hidden when 3D Model is active as requested) */}
+            {showPanelLayout && !modelGlbUrl && (
               <SolarPanelsLayer
                 localVertices={localVertices}
                 obstaclesLocal={obstaclesLocal}
