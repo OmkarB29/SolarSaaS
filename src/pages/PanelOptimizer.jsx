@@ -26,7 +26,8 @@ import {
   MapPin,
   Compass,
   Square,
-  Box
+  Box,
+  Maximize2
 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import PanelMapViewer from '../components/map/PanelMapViewer';
@@ -128,6 +129,9 @@ const PanelOptimizer = () => {
     return layouts.find(l => l.mode === activeMode) || layouts[0];
   }, [layouts, activeMode]);
 
+  // Viewport Sizing (Standard vs Full-Width Cinema View)
+  const [isWideViewport, setIsWideViewport] = useState(false);
+
   // View Switcher (2D Leaflet Map vs 3D Meshy AI Model)
   const [optimizerView, setOptimizerView] = useState(
     routerLocation.state?.defaultView ||
@@ -136,11 +140,11 @@ const PanelOptimizer = () => {
 
   const [model3dJob, setModel3dJob] = useState(() => {
     try {
-      return (
-        routerLocation.state?.rooftop?.model3dJob ||
-        JSON.parse(localStorage.getItem('solarscope.model3dJob')) ||
-        null
-      );
+      const fromRooftop = JSON.parse(localStorage.getItem('solarscope.rooftop') || 'null')?.model3dJob;
+      const fromJob = JSON.parse(localStorage.getItem('solarscope.model3dJob') || 'null');
+      const fromHistory = JSON.parse(localStorage.getItem('solarscope.model3dHistory') || 'null')?.[0];
+      const fromState = routerLocation.state?.rooftop?.model3dJob;
+      return fromState || fromRooftop || fromJob || fromHistory || null;
     } catch {
       return null;
     }
@@ -166,6 +170,13 @@ const PanelOptimizer = () => {
             setModel3dJob(updated);
             if (updated.status === 'SUCCEEDED') {
               localStorage.setItem('solarscope.model3dJob', JSON.stringify(updated));
+              try {
+                const stored = JSON.parse(localStorage.getItem('solarscope.rooftop') || '{}');
+                if (stored) {
+                  stored.model3dJob = updated;
+                  localStorage.setItem('solarscope.rooftop', JSON.stringify(stored));
+                }
+              } catch {}
             }
           }
         })
@@ -705,6 +716,20 @@ const PanelOptimizer = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsWideViewport((prev) => !prev)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                      isWideViewport
+                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                    title={isWideViewport ? 'Switch to standard layout' : 'Expand to wide cinema viewport'}
+                  >
+                    <Maximize2 size={13} />
+                    <span>{isWideViewport ? 'Standard Width' : 'Wide Cinema View'}</span>
+                  </button>
+
                   <Link
                     to="/model-3d"
                     className="text-2xs font-bold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
@@ -735,7 +760,7 @@ const PanelOptimizer = () => {
                     obstacles={rooftop?.obstacles || []}
                     customPanels={activeLayout?.panels || []}
                     minRotatedRect={rooftop?.minRotatedRect || null}
-                    canvasHeight="h-[400px]"
+                    canvasHeight={isWideViewport ? 'h-[640px] lg:h-[720px] xl:h-[780px]' : 'h-[540px] lg:h-[620px]'}
                     className="w-full"
                   />
                 )}
@@ -743,7 +768,7 @@ const PanelOptimizer = () => {
             </div>
 
             {/* Right Column: Usable Area Breakdown & Active Metrics */}
-            <div className="lg:col-span-1 space-y-4">
+            <div className={`${isWideViewport ? 'lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4' : 'lg:col-span-1 space-y-4'}`}>
               {/* Usable Area Analysis Card */}
               <Card className="p-5 border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">

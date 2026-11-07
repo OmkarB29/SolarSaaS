@@ -116,7 +116,16 @@ export default function Model3DView() {
 
   // Meshy AI Generation Modal & Job State
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [activeJob, setActiveJob] = useState(null);
+  const [mainViewMode, setMainViewMode] = useState('map'); // 'map' | 'studio'
+  const [activeJob, setActiveJob] = useState(() => {
+    try {
+      const savedRooftop = JSON.parse(localStorage.getItem('solarscope.rooftop'));
+      const savedJob = JSON.parse(localStorage.getItem('solarscope.model3dJob'));
+      return savedRooftop?.model3dJob || savedJob || null;
+    } catch {
+      return null;
+    }
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [uploadedPhotoFile, setUploadedPhotoFile] = useState(null);
   const [uploadedPhotoBase64, setUploadedPhotoBase64] = useState(null);
@@ -219,10 +228,11 @@ export default function Model3DView() {
     }
   }, []);
 
-  // Restore initial stored rooftop if available
+  // Restore initial stored rooftop & 3D model if available
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('solarscope.rooftop'));
+      const savedJob = JSON.parse(localStorage.getItem('solarscope.model3dJob'));
       if (saved?.polygonCoordinates?.length >= 3) {
         setRoofVertices(saved.polygonCoordinates);
         setIsRoofClosed(true);
@@ -235,10 +245,29 @@ export default function Model3DView() {
           fetchGoogleSolarOutline(saved.latitude, saved.longitude);
         }
       }
+      if (saved?.model3dJob || savedJob) {
+        setActiveJob(saved?.model3dJob || savedJob);
+      }
     } catch {
       // ignore
     }
   }, [fetchGoogleSolarOutline]);
+
+  // Query latest user 3D job from backend if not in local storage
+  useEffect(() => {
+    if (!activeJob) {
+      model3dService
+        .listUserJobs()
+        .then((jobs) => {
+          if (jobs && jobs.length > 0) {
+            const latestSucceeded = jobs.find((j) => j.status === 'SUCCEEDED') || jobs[0];
+            setActiveJob(latestSucceeded);
+            localStorage.setItem('solarscope.model3dJob', JSON.stringify(latestSucceeded));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activeJob]);
 
   // Handle address geocoding search
   const handleSearchAddress = async (e) => {
@@ -758,6 +787,16 @@ export default function Model3DView() {
       const job = await model3dService.createJob(jobPayload);
       setActiveJob(job);
       localStorage.setItem('solarscope.model3dJob', JSON.stringify(job));
+      try {
+        const stored = JSON.parse(localStorage.getItem('solarscope.rooftop') || '{}');
+        stored.model3dJob = job;
+        localStorage.setItem('solarscope.rooftop', JSON.stringify(stored));
+        const history = JSON.parse(localStorage.getItem('solarscope.model3dHistory') || '[]');
+        if (!history.some((h) => h.id === job.id)) {
+          history.unshift(job);
+          localStorage.setItem('solarscope.model3dHistory', JSON.stringify(history.slice(0, 20)));
+        }
+      } catch {}
       setIsConfirmModalOpen(false);
 
       // Start polling for job completion only if pending
@@ -766,6 +805,19 @@ export default function Model3DView() {
           setActiveJob(updatedJob);
           if (updatedJob.status === 'SUCCEEDED') {
             localStorage.setItem('solarscope.model3dJob', JSON.stringify(updatedJob));
+            try {
+              const stored = JSON.parse(localStorage.getItem('solarscope.rooftop') || '{}');
+              stored.model3dJob = updatedJob;
+              localStorage.setItem('solarscope.rooftop', JSON.stringify(stored));
+              const history = JSON.parse(localStorage.getItem('solarscope.model3dHistory') || '[]');
+              const idx = history.findIndex((h) => h.id === updatedJob.id);
+              if (idx >= 0) {
+                history[idx] = updatedJob;
+              } else {
+                history.unshift(updatedJob);
+              }
+              localStorage.setItem('solarscope.model3dHistory', JSON.stringify(history.slice(0, 20)));
+            } catch {}
           }
         }).catch((err) => {
           console.warn('[Model3DView] Background polling warning:', err);
@@ -863,19 +915,32 @@ export default function Model3DView() {
 
       {/* ─── MAIN WORKSPACE: MAP CANVAS + CAD SIDEBAR ─── */}
       <div className="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
-        {/* Left Map Viewport */}
-        <div className="flex-1 relative bg-slate-950">
-          {/* 3D Map Container */}
-          <div
-            ref={map3dContainerRef}
-            className={`w-full h-full ${use3DMode ? 'block' : 'hidden'}`}
-          />
+        {/* Left Viewport: 3D Model Studio or Interactive Map */}
+        <div className="flex-1 relative bg-slate-950 flex flex-col">
+          {mainViewMode === 'studio' ? (
+            <div className="w-full h-full p-2 flex flex-col">
+              <Model3DCanvas
+                job={activeJob}
+                polygonCoordinates={roofVertices}
+                obstacles={obstacles}
+                minRotatedRect={liveMetrics.minRotatedRect}
+                canvasHeight="h-full flex-1 min-h-[500px]"
+                className="w-full h-full"
+              />
+            </div>
+          ) : (
+            <>
+              {/* 3D Map Container */}
+              <div
+                ref={map3dContainerRef}
+                className={`w-full h-full ${use3DMode ? 'block' : 'hidden'}`}
+              />
 
-          {/* 2D Satellite Fallback Container */}
-          <div
-            ref={map2dContainerRef}
-            className={`w-full h-full ${!use3DMode ? 'block' : 'hidden'}`}
-          />
+              {/* 2D Satellite Fallback Container */}
+              <div
+                ref={map2dContainerRef}
+                className={`w-full h-full ${!use3DMode ? 'block' : 'hidden'}`}
+              />
 
           {/* Floating Map Controls HUD */}
           <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
@@ -985,6 +1050,8 @@ export default function Model3DView() {
                 <X size={14} />
               </button>
             </div>
+          )}
+            </>
           )}
         </div>
 
@@ -1110,11 +1177,25 @@ export default function Model3DView() {
 
             {/* Interactive 3D Viewer Container (Phase 3 Integration) */}
             <div className="mt-4 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xs font-bold text-slate-400 uppercase tracking-wider">3D Mesh View</span>
+                {activeJob && mainViewMode !== 'studio' && (
+                  <button
+                    type="button"
+                    onClick={() => setMainViewMode('studio')}
+                    className="text-2xs text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Full Studio View</span>
+                    <ArrowRight size={11} />
+                  </button>
+                )}
+              </div>
               <Model3DCanvas
                 job={activeJob}
                 polygonCoordinates={roofVertices}
                 obstacles={obstacles}
                 minRotatedRect={liveMetrics.minRotatedRect}
+                canvasHeight="h-[380px]"
               />
             </div>
           </div>

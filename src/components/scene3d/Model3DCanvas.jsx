@@ -10,7 +10,9 @@ import {
   Info,
   Loader2,
   Sparkles,
-  Layers
+  Layers,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { model3dService } from '../../services/model3dService';
 import { fetchSolarDataLayers, fetchGeoTiffArrayBuffer, parseSolarDsm } from '../../utils/solarDsmParser';
@@ -364,7 +366,7 @@ export default function Model3DCanvas({
   minRotatedRect = null,
   customPanels = null,
   buildingHeight = 3.5,
-  canvasHeight = 'h-80',
+  canvasHeight = 'h-[520px]',
   className = ''
 }) {
   // Layer Toggles
@@ -376,6 +378,17 @@ export default function Model3DCanvas({
   const [rotationDeg, setRotationDeg] = useState(0);
   const [scaleFactor, setScaleFactor] = useState(1.0);
   const [elevation, setElevation] = useState(0.0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
 
   // Model loading states & diagnostic tracking
   const [modelGlbUrl, setModelGlbUrl] = useState(null);
@@ -699,17 +712,34 @@ export default function Model3DCanvas({
   }, [obstacles, centerLat, centerLng]);
 
   return (
-    <div className={`flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl ${className}`}>
-      {/* ─── MANDATORY AI DISCLAIMER BANNER ─── */}
-      <div className="bg-blue-950/80 border-b border-blue-800/80 px-3.5 py-2 flex items-start gap-2 text-2xs text-blue-200">
-        <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
-        <span className="leading-snug">
-          <strong>AI-generated visual model.</strong> Panel counts and layout placement come strictly from measured roof geometry.
-        </span>
+    <div
+      className={
+        isFullscreen
+          ? 'fixed inset-2 md:inset-4 z-50 flex flex-col bg-slate-950 rounded-2xl border-2 border-indigo-500/80 shadow-2xl overflow-hidden backdrop-blur-xl'
+          : `flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl ${className}`
+      }
+    >
+      {/* ─── MANDATORY AI DISCLAIMER BANNER & FULLSCREEN TOGGLE ─── */}
+      <div className="bg-blue-950/80 border-b border-blue-800/80 px-3.5 py-2 flex items-center justify-between gap-2 text-2xs text-blue-200">
+        <div className="flex items-start gap-2">
+          <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
+          <span className="leading-snug">
+            <strong>AI-generated visual model.</strong> Panel counts and layout placement come strictly from measured roof geometry.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-600/60 hover:bg-indigo-600 border border-indigo-400/50 text-white font-semibold transition cursor-pointer shrink-0 ml-2"
+          title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen View'}
+        >
+          {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+        </button>
       </div>
 
       {/* ─── 3D VIEWPORT CANVAS ─── */}
-      <div className={`relative w-full ${canvasHeight} bg-gradient-to-b from-slate-900 to-slate-950`}>
+      <div className={`relative w-full ${isFullscreen ? 'flex-1 min-h-[450px]' : canvasHeight} bg-gradient-to-b from-slate-900 to-slate-950`}>
         <CanvasErrorBoundary>
           <Canvas
             camera={{ position: [0, 35, 45], fov: 45 }}

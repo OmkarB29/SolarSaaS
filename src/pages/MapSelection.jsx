@@ -27,27 +27,49 @@ import { useLanguage } from '../context/LanguageContext';
 
 const DEFAULT_POSITION = [12.9716, 77.5946];
 
+const getStoredRooftop = () => {
+  try {
+    return JSON.parse(localStorage.getItem('solarscope.rooftop'));
+  } catch {
+    return null;
+  }
+};
+
 const MapSelection = () => {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
-  const hasUserSelectedLocation = useRef(false);
+
+  const storedRooftop = useMemo(() => getStoredRooftop(), []);
+  const initialPosition = useMemo(() => {
+    if (storedRooftop?.latitude && storedRooftop?.longitude) {
+      return [storedRooftop.latitude, storedRooftop.longitude];
+    }
+    return DEFAULT_POSITION;
+  }, [storedRooftop]);
+  const initialLabel = storedRooftop?.address || storedRooftop?.location || storedRooftop?.locationName || 'Bengaluru, Karnataka';
+  const initialPolygon = Array.isArray(storedRooftop?.polygonCoordinates) && storedRooftop.polygonCoordinates.length >= 3
+    ? storedRooftop.polygonCoordinates
+    : [];
+  const initialArea = storedRooftop?.roofArea || storedRooftop?.area || 0;
+
+  const hasUserSelectedLocation = useRef(Boolean(storedRooftop?.latitude));
   const weatherDebounceRef = useRef(null);
   const solarDebounceRef = useRef(null);
 
-  const [query, setQuery] = useState('Bengaluru');
-  const [center, setCenter] = useState(DEFAULT_POSITION);
+  const [query, setQuery] = useState(storedRooftop?.address || 'Bengaluru');
+  const [center, setCenter] = useState(initialPosition);
   const [locationBounds, setLocationBounds] = useState(null);
-  const [markerPosition, setMarkerPosition] = useState(DEFAULT_POSITION);
-  const [markerLabel, setMarkerLabel] = useState('Bengaluru, Karnataka');
-  const [polygonCoordinates, setPolygonCoordinates] = useState([]);
-  const [area, setArea] = useState(0);
+  const [markerPosition, setMarkerPosition] = useState(initialPosition);
+  const [markerLabel, setMarkerLabel] = useState(initialLabel);
+  const [polygonCoordinates, setPolygonCoordinates] = useState(initialPolygon);
+  const [area, setArea] = useState(initialArea);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [isSavingAnalysis, setIsSavingAnalysis] = useState(false);
   const [weatherData, setWeatherData] = useState(null);
-  const [googleSolarData, setGoogleSolarData] = useState(null);
+  const [googleSolarData, setGoogleSolarData] = useState(storedRooftop?.googleSolarData || null);
   const [isLoadingSolarData, setIsLoadingSolarData] = useState(false);
   const [showSolarPanels, setShowSolarPanels] = useState(true);
   const [panelCountSlider, setPanelCountSlider] = useState(50);
@@ -60,6 +82,21 @@ const MapSelection = () => {
     setAnalysisResults(null);
     setSaveFeedback(null);
     setIsDrawing(false);
+
+    try {
+      const existing = JSON.parse(localStorage.getItem('solarscope.rooftop') || 'null');
+      const job = existing?.model3dJob || JSON.parse(localStorage.getItem('solarscope.model3dJob') || 'null');
+      if (job) {
+        const history = JSON.parse(localStorage.getItem('solarscope.model3dHistory') || '[]');
+        if (!history.some((h) => h.id === job.id)) {
+          history.unshift(job);
+          localStorage.setItem('solarscope.model3dHistory', JSON.stringify(history.slice(0, 20)));
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     localStorage.removeItem('solarscope.rooftop');
     window.dispatchEvent(new Event('storage'));
   }, []);
@@ -85,13 +122,13 @@ const MapSelection = () => {
       setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          if (silent && hasUserSelectedLocation.current) {
+          if (silent && (hasUserSelectedLocation.current || polygonCoordinates.length > 0)) {
             setIsLocating(false);
             return;
           }
 
           const currentPosition = [position.coords.latitude, position.coords.longitude];
-          updateLocation(currentPosition, 'Your current location', null, true);
+          updateLocation(currentPosition, 'Your current location', null, !silent);
           setQuery('Current location');
           setIsLocating(false);
         },
@@ -105,11 +142,14 @@ const MapSelection = () => {
         { enableHighAccuracy: true, timeout: 9000, maximumAge: 60000 }
       );
     },
-    [updateLocation]
+    [updateLocation, polygonCoordinates.length]
   );
 
   useEffect(() => {
-    requestCurrentLocation({ silent: true });
+    const existing = getStoredRooftop();
+    if (!existing || (!existing.latitude && !existing.polygonCoordinates?.length)) {
+      requestCurrentLocation({ silent: true });
+    }
   }, [requestCurrentLocation]);
 
   // Fetch weather when marker position updates
@@ -239,6 +279,15 @@ const MapSelection = () => {
       } : null,
     };
 
+    const existingRooftop = getStoredRooftop();
+    const existingJob = existingRooftop?.model3dJob || (() => {
+      try {
+        return JSON.parse(localStorage.getItem('solarscope.model3dJob'));
+      } catch {
+        return null;
+      }
+    })();
+
     const rooftopData = {
       latitude: markerPosition[0],
       longitude: markerPosition[1],
@@ -249,10 +298,14 @@ const MapSelection = () => {
       roofArea: selectedArea,
       area: selectedArea,
       googleSolarData: latestAnalysis.googleSolarData,
+      ...(existingJob ? { model3dJob: existingJob } : {}),
     };
 
     // Store in localStorage for instant access across tabs
     localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
+    if (existingJob) {
+      localStorage.setItem('solarscope.model3dJob', JSON.stringify(existingJob));
+    }
     localStorage.setItem('latestAnalysis', JSON.stringify(latestAnalysis));
     setAnalysisResults(results);
 
@@ -519,6 +572,15 @@ const MapSelection = () => {
               type="button"
               disabled={!area || polygonCoordinates.length < 3}
               onClick={() => {
+                const existingRooftop = getStoredRooftop();
+                const existingJob = existingRooftop?.model3dJob || (() => {
+                  try {
+                    return JSON.parse(localStorage.getItem('solarscope.model3dJob'));
+                  } catch {
+                    return null;
+                  }
+                })();
+
                 const rooftopData = {
                   latitude: markerPosition[0],
                   longitude: markerPosition[1],
@@ -529,8 +591,12 @@ const MapSelection = () => {
                   roofArea: area,
                   area: area,
                   googleSolarData,
+                  ...(existingJob ? { model3dJob: existingJob } : {}),
                 };
                 localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
+                if (existingJob) {
+                  localStorage.setItem('solarscope.model3dJob', JSON.stringify(existingJob));
+                }
                 navigate('/panel-optimizer', { state: { rooftop: rooftopData } });
               }}
               className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-blue-600 hover:bg-blue-700 py-3.5 font-bold text-white shadow-md shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
@@ -554,6 +620,15 @@ const MapSelection = () => {
               type="button"
               disabled={!area || polygonCoordinates.length < 3}
               onClick={() => {
+                const existingRooftop = getStoredRooftop();
+                const existingJob = existingRooftop?.model3dJob || (() => {
+                  try {
+                    return JSON.parse(localStorage.getItem('solarscope.model3dJob'));
+                  } catch {
+                    return null;
+                  }
+                })();
+
                 const rooftopData = {
                   latitude: markerPosition[0],
                   longitude: markerPosition[1],
@@ -564,8 +639,12 @@ const MapSelection = () => {
                   roofArea: area,
                   area: area,
                   googleSolarData,
+                  ...(existingJob ? { model3dJob: existingJob } : {}),
                 };
                 localStorage.setItem('solarscope.rooftop', JSON.stringify(rooftopData));
+                if (existingJob) {
+                  localStorage.setItem('solarscope.model3dJob', JSON.stringify(existingJob));
+                }
                 navigate('/solar-potential', { state: { rooftop: rooftopData } });
               }}
               className="group flex w-full items-center justify-center space-x-2 rounded-xl bg-amber-500 hover:bg-amber-600 py-3 font-semibold text-xs text-white shadow-md shadow-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
