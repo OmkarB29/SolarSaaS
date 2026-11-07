@@ -653,6 +653,28 @@ export default function Model3DCanvas({
     }
   }, []);
 
+  // Solid Mode & Shading Controls
+  const [solidMode, setSolidMode] = useState(initialSolidMode);
+  const [showEdges, setShowEdges] = useState(true);
+  const [solidColor, setSolidColor] = useState('#cbd5e1'); // '#cbd5e1' (CAD Slate), '#f8fafc' (Pure White), '#94a3b8' (Stone Clay)
+  const [wireframe, setWireframe] = useState(false);
+
+  // Alignment Controls
+  const [rotationDeg, setRotationDeg] = useState(0);
+  const [scaleFactor, setScaleFactor] = useState(1.0);
+  const [elevation, setElevation] = useState(0.0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const downDir = useMemo(() => new THREE.Vector3(0, -1, 0), []);
 
@@ -684,28 +706,6 @@ export default function Model3DCanvas({
     }
     return modelRoofHeight || buildingHeight;
   }, [modelMeshGroup, modelRoofHeight, buildingHeight, raycaster, downDir, rotationDeg, elevation]);
-
-  // Solid Mode & Shading Controls
-  const [solidMode, setSolidMode] = useState(initialSolidMode);
-  const [showEdges, setShowEdges] = useState(true);
-  const [solidColor, setSolidColor] = useState('#cbd5e1'); // '#cbd5e1' (CAD Slate), '#f8fafc' (Pure White), '#94a3b8' (Stone Clay)
-  const [wireframe, setWireframe] = useState(false);
-
-  // Alignment Controls
-  const [rotationDeg, setRotationDeg] = useState(0);
-  const [scaleFactor, setScaleFactor] = useState(1.0);
-  const [elevation, setElevation] = useState(0.0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        setIsFullscreen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen]);
 
   // Model loading states & diagnostic tracking
   const [modelGlbUrl, setModelGlbUrl] = useState(null);
