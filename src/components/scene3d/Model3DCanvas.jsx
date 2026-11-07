@@ -558,24 +558,6 @@ export default function Model3DCanvas({
   const [dsmMetadata, setDsmMetadata] = useState(null);
   const [dsmData, setDsmData] = useState(null);
 
-  // Panel Compatibility Metrics (Computed from customPanels or rooftop area)
-  const compatibilityMetrics = useMemo(() => {
-    const rawPanels = customPanels && customPanels.length > 0
-      ? customPanels.length
-      : Math.max(8, Math.floor(((effectiveMinRotatedRect?.areaM2 || 120) * 0.72) / 2.3) - (obstacles.length * 3));
-    const powerKw = Number(((rawPanels * 550) / 1000).toFixed(1));
-    const areaM2 = effectiveMinRotatedRect?.areaM2 || 120;
-    const util = Math.min(88, Math.round(((rawPanels * 2.2) / areaM2) * 100)) || 74;
-
-    return {
-      panelCount: rawPanels,
-      systemCapacityKw: powerKw,
-      obstaclesAvoided: obstacles.length,
-      utilizationPercent: util,
-      status: '100% Fit Verified',
-    };
-  }, [customPanels, effectiveMinRotatedRect?.areaM2, obstacles.length]);
-
   // Centroid reference
   const centerLat = useMemo(() => {
     if (!polygonCoordinates || polygonCoordinates.length === 0) return 12.9716;
@@ -627,6 +609,24 @@ export default function Model3DCanvas({
       return null;
     }
   }, [minRotatedRect, polygonCoordinates]);
+
+  // Panel Compatibility Metrics (Computed from customPanels or rooftop area)
+  const compatibilityMetrics = useMemo(() => {
+    const areaM2 = effectiveMinRotatedRect?.areaM2 || 120;
+    const rawPanels = customPanels && customPanels.length > 0
+      ? customPanels.length
+      : Math.max(8, Math.floor(((areaM2) * 0.72) / 2.3) - ((obstacles?.length || 0) * 3));
+    const powerKw = Number(((rawPanels * 550) / 1000).toFixed(1));
+    const util = Math.min(88, Math.round(((rawPanels * 2.2) / areaM2) * 100)) || 74;
+
+    return {
+      panelCount: rawPanels,
+      systemCapacityKw: powerKw,
+      obstaclesAvoided: obstacles?.length || 0,
+      utilizationPercent: util,
+      status: '100% Fit Verified',
+    };
+  }, [customPanels, effectiveMinRotatedRect?.areaM2, obstacles]);
 
   // Auto-align default footprint to match minimum rotated rectangle
   useEffect(() => {
