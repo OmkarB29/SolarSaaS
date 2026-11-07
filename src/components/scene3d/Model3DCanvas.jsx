@@ -36,6 +36,21 @@ const getStoredAuth = () => {
   }
 };
 
+function extractPoint(pt) {
+  if (!pt) return null;
+  if (Array.isArray(pt)) {
+    const lat = Number(pt[0]);
+    const lng = Number(pt[1]);
+    return (!isNaN(lat) && !isNaN(lng)) ? { lat, lng } : null;
+  }
+  if (typeof pt === 'object') {
+    const lat = Number(pt.lat ?? pt.latitude);
+    const lng = Number(pt.lng ?? pt.longitude);
+    return (!isNaN(lat) && !isNaN(lng)) ? { lat, lng } : null;
+  }
+  return null;
+}
+
 const EARTH_RADIUS = 6371000.0;
 
 function gpsToLocalMeters(lat, lng, centerLat, centerLng) {
@@ -328,43 +343,77 @@ function SolarPanelsLayer({
   obstaclesLocal,
   buildingHeight = 3.5,
   elevation = 0,
+  rotationDeg = 0,
   customPanels = null,
   centerLat = 12.9716,
   centerLng = 77.5946,
   roofBearingDeg = 0,
   sampleHeight = null,
   highlightObstacles = false,
+  modelRoofHeight = 6.0,
 }) {
   const panelPlacements = useMemo(() => {
     // 1. If custom panels calculated by the AI Optimizer are provided, render exact coordinates and yaw angle
     if (customPanels && customPanels.length > 0) {
-      return customPanels
-        .map((p) => {
-          if (!p.polygon || p.polygon.length < 4) return null;
-          const corners3D = p.polygon.map(([lat, lng]) =>
-            gpsToLocalMeters(lat, lng, centerLat, centerLng)
-          );
-          const cx = (corners3D[0].x + corners3D[1].x + corners3D[2].x + corners3D[3].x) / 4;
-          const cz = (corners3D[0].z + corners3D[1].z + corners3D[2].z + corners3D[3].z) / 4;
+      const extracted = customPanels
+        .map((p, idx) => {
+          let cx = 0;
+          let cz = 0;
+          let angle = 0;
+          let dimX = p.widthMeters || 1.1;
+          let dimZ = p.lengthMeters || 2.1;
 
-          const dx = corners3D[1].x - corners3D[0].x;
-          const dz = corners3D[1].z - corners3D[0].z;
-          const angle = Math.atan2(dz, dx);
-          const dimX = Math.hypot(dx, dz);
+          if (p.polygon && p.polygon.length >= 4) {
+            const rawPts = p.polygon.map(extractPoint).filter(Boolean);
+            if (rawPts.length >= 4) {
+              const corners3D = rawPts.map((pt) =>
+                gpsToLocalMeters(pt.lat, pt.lng, centerLat, centerLng)
+              );
+              cx = (corners3D[0].x + corners3D[1].x + corners3D[2].x + corners3D[3].x) / 4;
+              cz = (corners3D[0].z + corners3D[1].z + corners3D[2].z + corners3D[3].z) / 4;
 
-          const dx2 = corners3D[3].x - corners3D[0].x;
-          const dz2 = corners3D[3].z - corners3D[0].z;
-          const dimZ = Math.hypot(dx2, dz2);
+              const dx = corners3D[1].x - corners3D[0].x;
+              const dz = corners3D[1].z - corners3D[0].z;
+              angle = Math.atan2(dz, dx);
+              const computedDimX = Math.hypot(dx, dz);
+
+              const dx2 = corners3D[3].x - corners3D[0].x;
+              const dz2 = corners3D[3].z - corners3D[0].z;
+              const computedDimZ = Math.hypot(dx2, dz2);
+
+              if (computedDimX > 0.1) dimX = computedDimX;
+              if (computedDimZ > 0.1) dimZ = computedDimZ;
+            }
+          } else if (p.centerLat != null && p.centerLng != null) {
+            const localC = gpsToLocalMeters(p.centerLat, p.centerLng, centerLat, centerLng);
+            cx = localC.x;
+            cz = localC.z;
+          } else if (p.center?.lat != null || p.center?.latitude != null) {
+            const lat = p.center.lat ?? p.center.latitude;
+            const lng = p.center.lng ?? p.center.longitude;
+            const localC = gpsToLocalMeters(lat, lng, centerLat, centerLng);
+            cx = localC.x;
+            cz = localC.z;
+          } else {
+            return null;
+          }
+
+          if (isNaN(cx) || isNaN(cz)) return null;
 
           return {
+            id: p.panelNumber || idx,
             cx,
             cz,
             angle,
-            dimX: dimX || 1.1,
-            dimZ: dimZ || 2.1,
+            dimX,
+            dimZ,
           };
         })
         .filter(Boolean);
+
+      if (extracted.length > 0) {
+        return extracted;
+      }
     }
 
     // 2. Procedural grid fallback inside polygon aligned with roof angle
@@ -374,7 +423,6 @@ function SolarPanelsLayer({
     const cosA = Math.cos(angleRad);
     const sinA = Math.sin(angleRad);
 
-    // Rotate local vertices into roof-aligned coordinate system (u, v)
     const rotVertices = localVertices.map((p) => ({
       u: p.x * cosA - p.z * sinA,
       v: p.x * sinA + p.z * cosA,
@@ -434,6 +482,7 @@ function SolarPanelsLayer({
 
         if (!hitsObstacle) {
           panels.push({
+            id: `proc-${panels.length}`,
             cx,
             cz,
             angle: -angleRad,
@@ -448,7 +497,10 @@ function SolarPanelsLayer({
   }, [localVertices, obstaclesLocal, customPanels, centerLat, centerLng, roofBearingDeg]);
 
   return (
-    <group position={[0, elevation, 0]}>
+    <group
+      position={[0, elevation, 0]}
+      rotation={[0, (rotationDeg * Math.PI) / 180, 0]}
+    >
       {/* Obstacle Clearance Hazard Zones on the Roof */}
       {highlightObstacles && obstaclesLocal.map((obs, idx) => {
         if (!obs || obs.length < 3) return null;
@@ -459,8 +511,8 @@ function SolarPanelsLayer({
                 attach="geometry"
                 onUpdate={(geo) => {
                   const pts = [...obs, obs[0]].map((p) => {
-                    const h = sampleHeight ? sampleHeight(p.x, p.z) : buildingHeight;
-                    return new THREE.Vector3(p.x, h + 0.12, p.z);
+                    const h = sampleHeight ? sampleHeight(p.x, p.z) : (modelRoofHeight || buildingHeight);
+                    return new THREE.Vector3(p.x, h + 0.16, p.z);
                   });
                   geo.setFromPoints(pts);
                 }}
@@ -472,22 +524,36 @@ function SolarPanelsLayer({
       })}
 
       {panelPlacements.map((panel, idx) => {
-        const panelHeightAboveGround = (sampleHeight ? sampleHeight(panel.cx, panel.cz) : buildingHeight) + 0.08;
+        const rawH = sampleHeight ? sampleHeight(panel.cx, panel.cz) : (modelRoofHeight || buildingHeight);
+        // Ensure panel is placed cleanly on top of the rooftop surface without sinking into the structure
+        const panelHeightAboveGround = Math.max(rawH, (modelRoofHeight || buildingHeight) * 0.4) + 0.15;
         return (
-          <mesh
-            key={idx}
+          <group
+            key={panel.id || idx}
             position={[panel.cx, panelHeightAboveGround, panel.cz]}
             rotation={[0, -panel.angle, 0]}
-            castShadow
-            receiveShadow
           >
-            <boxGeometry args={[panel.dimX * 0.95, 0.04, panel.dimZ * 0.95]} />
-            <meshStandardMaterial
-              color="#1E3A8A"
-              roughness={0.2}
-              metalness={0.8}
-            />
-          </mesh>
+            {/* Silicon Photovoltaic Cell Surface */}
+            <mesh castShadow receiveShadow position={[0, 0.04, 0]}>
+              <boxGeometry args={[panel.dimX * 0.96, 0.08, panel.dimZ * 0.96]} />
+              <meshStandardMaterial
+                color="#2563eb"
+                roughness={0.15}
+                metalness={0.7}
+                emissive="#1e3a8a"
+                emissiveIntensity={0.25}
+              />
+            </mesh>
+            {/* Anodized Aluminum Panel Frame */}
+            <mesh position={[0, 0.02, 0]}>
+              <boxGeometry args={[panel.dimX, 0.04, panel.dimZ]} />
+              <meshStandardMaterial
+                color="#475569"
+                roughness={0.5}
+                metalness={0.6}
+              />
+            </mesh>
+          </group>
         );
       })}
     </group>
@@ -529,17 +595,30 @@ export default function Model3DCanvas({
     if (modelMeshGroup) {
       try {
         modelMeshGroup.updateMatrixWorld(true);
-        raycaster.set(new THREE.Vector3(cx, 100, cz), downDir);
+        // Rotate local cx, cz by rotationDeg to test world mesh position
+        const rotRad = (rotationDeg * Math.PI) / 180;
+        const cosR = Math.cos(rotRad);
+        const sinR = Math.sin(rotRad);
+        const worldX = cx * cosR + cz * sinR;
+        const worldZ = -cx * sinR + cz * cosR;
+
+        raycaster.set(new THREE.Vector3(worldX, 100, worldZ), downDir);
         const hits = raycaster.intersectObject(modelMeshGroup, true);
         if (hits.length > 0) {
-          return hits[0].point.y;
+          // Reject hits that correspond to the flat ground base terrain slab
+          for (let i = 0; i < hits.length; i++) {
+            const y = hits[i].point.y - elevation;
+            if (y >= ((modelRoofHeight || buildingHeight) * 0.3)) {
+              return y;
+            }
+          }
         }
       } catch {
         // ignore
       }
     }
     return modelRoofHeight || buildingHeight;
-  }, [modelMeshGroup, modelRoofHeight, buildingHeight, raycaster, downDir]);
+  }, [modelMeshGroup, modelRoofHeight, buildingHeight, raycaster, downDir, rotationDeg, elevation]);
 
   // Solid Mode & Shading Controls
   const [solidMode, setSolidMode] = useState(initialSolidMode);
@@ -577,12 +656,16 @@ export default function Model3DCanvas({
   // Centroid reference
   const centerLat = useMemo(() => {
     if (!polygonCoordinates || polygonCoordinates.length === 0) return 12.9716;
-    return polygonCoordinates.reduce((s, p) => s + p[0], 0) / polygonCoordinates.length;
+    const validPts = polygonCoordinates.map(extractPoint).filter(Boolean);
+    if (validPts.length === 0) return 12.9716;
+    return validPts.reduce((s, p) => s + p.lat, 0) / validPts.length;
   }, [polygonCoordinates]);
 
   const centerLng = useMemo(() => {
     if (!polygonCoordinates || polygonCoordinates.length === 0) return 77.5946;
-    return polygonCoordinates.reduce((s, p) => s + p[1], 0) / polygonCoordinates.length;
+    const validPts = polygonCoordinates.map(extractPoint).filter(Boolean);
+    if (validPts.length === 0) return 77.5946;
+    return validPts.reduce((s, p) => s + p.lng, 0) / validPts.length;
   }, [polygonCoordinates]);
 
   // Dynamically calculate minimum rotated rectangle if not passed in props
@@ -593,7 +676,9 @@ export default function Model3DCanvas({
     if (!polygonCoordinates || polygonCoordinates.length < 3) return null;
 
     try {
-      const closed = [...polygonCoordinates, polygonCoordinates[0]].map(([lat, lng]) => [lng, lat]);
+      const validPts = polygonCoordinates.map(extractPoint).filter(Boolean);
+      if (validPts.length < 3) return null;
+      const closed = [...validPts, validPts[0]].map((p) => [p.lng, p.lat]);
       const polyFeature = turf.polygon([closed]);
 
       let minArea = Infinity;
@@ -652,12 +737,16 @@ export default function Model3DCanvas({
     return 28.0;
   }, [effectiveMinRotatedRect]);
 
-  // Auto-align default rotation to match minimum rotated rectangle
+  // Auto-align default rotation: For real AI GLB models from North-up satellite capture, default is 0°
   useEffect(() => {
-    if (effectiveMinRotatedRect && effectiveMinRotatedRect.bearingDeg != null) {
-      setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
+    if (!modelGlbUrl) {
+      if (effectiveMinRotatedRect && effectiveMinRotatedRect.bearingDeg != null) {
+        setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
+      }
+    } else {
+      setRotationDeg(0);
     }
-  }, [effectiveMinRotatedRect]);
+  }, [effectiveMinRotatedRect, modelGlbUrl]);
 
   // Google Solar DSM Query & Ingestion
   useEffect(() => {
@@ -892,14 +981,20 @@ export default function Model3DCanvas({
   // Convert polygon vertices to local metric coordinates
   const localVertices = useMemo(() => {
     if (!polygonCoordinates || polygonCoordinates.length < 3) return [];
-    return polygonCoordinates.map(([lat, lng]) => gpsToLocalMeters(lat, lng, centerLat, centerLng));
+    return polygonCoordinates
+      .map(extractPoint)
+      .filter(Boolean)
+      .map((p) => gpsToLocalMeters(p.lat, p.lng, centerLat, centerLng));
   }, [polygonCoordinates, centerLat, centerLng]);
 
   // Convert obstacles to local metric coordinates
   const obstaclesLocal = useMemo(() => {
     if (!obstacles || obstacles.length === 0) return [];
     return obstacles.map((obs) =>
-      obs.map(([lat, lng]) => gpsToLocalMeters(lat, lng, centerLat, centerLng))
+      obs
+        .map(extractPoint)
+        .filter(Boolean)
+        .map((p) => gpsToLocalMeters(p.lat, p.lng, centerLat, centerLng))
     );
   }, [obstacles, centerLat, centerLng]);
 
@@ -923,21 +1018,27 @@ export default function Model3DCanvas({
           {/* Check Panel Compatibility Button */}
           <button
             type="button"
-            onClick={() => setPanelCompatibilityMode((prev) => !prev)}
+            onClick={() => {
+              setPanelCompatibilityMode((prev) => {
+                const next = !prev;
+                setShowPanelLayout(next);
+                return next;
+              });
+            }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-2xs font-bold transition cursor-pointer shadow-sm ${
-              panelCompatibilityMode
+              (panelCompatibilityMode || showPanelLayout)
                 ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-emerald-900/50'
                 : 'bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border-emerald-500/40 hover:border-emerald-400'
             }`}
             title={
-              panelCompatibilityMode
+              (panelCompatibilityMode || showPanelLayout)
                 ? 'Hide solar panels to view clean 3D building'
                 : 'Check & visualize solar panel placement compatibility on 3D rooftop'
             }
           >
-            <ShieldCheck size={13} className={panelCompatibilityMode ? 'text-white' : 'text-emerald-400'} />
-            <span>{panelCompatibilityMode ? 'Compatibility: ON' : 'Check Panel Compatibility'}</span>
-            {panelCompatibilityMode && (
+            <ShieldCheck size={13} className={(panelCompatibilityMode || showPanelLayout) ? 'text-white' : 'text-emerald-400'} />
+            <span>{(panelCompatibilityMode || showPanelLayout) ? 'Compatibility: ON' : 'Check Panel Compatibility'}</span>
+            {(panelCompatibilityMode || showPanelLayout) && (
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
             )}
           </button>
@@ -1025,23 +1126,25 @@ export default function Model3DCanvas({
               </SceneErrorBoundary>
             )}
 
-            {/* When panelCompatibilityMode is ACTIVE: Plant Solar Panels ON the 3D Model Roof & Avoid Obstacles */}
-            {panelCompatibilityMode && (
+            {/* Solar Panels Layer (Planted directly on 3D Rooftop Mesh when Compatibility or Panel Layout is ON) */}
+            {(panelCompatibilityMode || showPanelLayout) && (
               <SolarPanelsLayer
                 localVertices={localVertices}
                 obstaclesLocal={obstaclesLocal}
                 buildingHeight={buildingHeight}
                 elevation={elevation}
+                rotationDeg={rotationDeg}
                 customPanels={customPanels}
                 centerLat={centerLat}
                 centerLng={centerLng}
                 roofBearingDeg={effectiveMinRotatedRect?.bearingDeg || 0}
                 sampleHeight={sampleRoofHeight}
                 highlightObstacles={true}
+                modelRoofHeight={modelRoofHeight}
               />
             )}
 
-            {/* Fallback Parametric Layers (Only when no 3D AI Model is active) */}
+            {/* Fallback Parametric Rooftop Layer (Only when no 3D AI Model is active) */}
             {showMeasuredBoundary && !modelGlbUrl && (
               <MeasuredRooftopLayer
                 localVertices={localVertices}
@@ -1052,18 +1155,25 @@ export default function Model3DCanvas({
               />
             )}
 
-            {showPanelLayout && !modelGlbUrl && !panelCompatibilityMode && (
-              <SolarPanelsLayer
-                localVertices={localVertices}
-                obstaclesLocal={obstaclesLocal}
-                buildingHeight={buildingHeight}
-                elevation={elevation}
-                customPanels={customPanels}
-                centerLat={centerLat}
-                centerLng={centerLng}
-                roofBearingDeg={effectiveMinRotatedRect?.bearingDeg || 0}
-                sampleHeight={heightGrid.sampleHeight}
-              />
+            {/* Projected Roof Perimeter Outline (CAD) on 3D Model */}
+            {showMeasuredBoundary && modelGlbUrl && (
+              <group
+                position={[0, elevation, 0]}
+                rotation={[0, (rotationDeg * Math.PI) / 180, 0]}
+              >
+                <lineLoop>
+                  <bufferGeometry
+                    attach="geometry"
+                    onUpdate={(geo) => {
+                      const points = [...localVertices, localVertices[0]].map(
+                        (p) => new THREE.Vector3(p.x, (modelRoofHeight || buildingHeight) + 0.18, p.z)
+                      );
+                      geo.setFromPoints(points);
+                    }}
+                  />
+                  <lineBasicMaterial color="#38BDF8" linewidth={3} />
+                </lineLoop>
+              </group>
             )}
           </Canvas>
         </CanvasErrorBoundary>
@@ -1188,25 +1298,31 @@ export default function Model3DCanvas({
               <span className="text-slate-400 font-semibold">Panel Fit Check</span>
               <span
                 className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                  panelCompatibilityMode
+                  (panelCompatibilityMode || showPanelLayout)
                     ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                     : 'text-slate-500'
                 }`}
               >
-                {panelCompatibilityMode ? 'ON' : 'OFF'}
+                {(panelCompatibilityMode || showPanelLayout) ? 'ON' : 'OFF'}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => setPanelCompatibilityMode((prev) => !prev)}
+              onClick={() => {
+                setPanelCompatibilityMode((prev) => {
+                  const next = !prev;
+                  setShowPanelLayout(next);
+                  return next;
+                });
+              }}
               className={`w-full py-1.5 px-2 rounded-lg text-2xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                panelCompatibilityMode
+                (panelCompatibilityMode || showPanelLayout)
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
               }`}
             >
-              <Zap size={12} className={panelCompatibilityMode ? 'text-amber-300' : 'text-slate-400'} />
-              <span>{panelCompatibilityMode ? 'Hide Placements' : 'Verify & Plant Panels'}</span>
+              <Zap size={12} className={(panelCompatibilityMode || showPanelLayout) ? 'text-amber-300' : 'text-slate-400'} />
+              <span>{(panelCompatibilityMode || showPanelLayout) ? 'Hide Placements' : 'Verify & Plant Panels'}</span>
             </button>
           </div>
           <div className="flex flex-col gap-1">
@@ -1235,12 +1351,18 @@ export default function Model3DCanvas({
 
             <button
               type="button"
-              onClick={() => setShowPanelLayout((p) => !p)}
+              onClick={() => {
+                setShowPanelLayout((p) => {
+                  const next = !p;
+                  setPanelCompatibilityMode(next);
+                  return next;
+                });
+              }}
               className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
-                showPanelLayout ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
+                (showPanelLayout || panelCompatibilityMode) ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
               }`}
             >
-              {showPanelLayout ? <Eye size={12} /> : <EyeOff size={12} />}
+              {(showPanelLayout || panelCompatibilityMode) ? <Eye size={12} /> : <EyeOff size={12} />}
               <span>Panel Layout</span>
             </button>
           </div>
