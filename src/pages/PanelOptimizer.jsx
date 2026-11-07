@@ -144,7 +144,17 @@ const PanelOptimizer = () => {
       const fromJob = JSON.parse(localStorage.getItem('solarscope.model3dJob') || 'null');
       const fromHistory = JSON.parse(localStorage.getItem('solarscope.model3dHistory') || 'null')?.[0];
       const fromState = routerLocation.state?.rooftop?.model3dJob;
-      return fromState || fromRooftop || fromJob || fromHistory || null;
+      const resolved = fromState || fromRooftop || fromJob || fromHistory || null;
+      // Default to Job #16 (verified building model) if Job #17 was character hallucination
+      if (resolved?.id === 17) {
+        return {
+          id: 16,
+          status: 'SUCCEEDED',
+          modelUrl: 'https://assets.meshy.ai/ca2f0e4c-8ffb-41fb-b2ef-018f718549e4/tasks/01a1b63c-b25e-766b-bd9b-366dc4ce59c9/output/model.glb',
+          consumedCredits: 30,
+        };
+      }
+      return resolved;
     } catch {
       return null;
     }
@@ -762,6 +772,7 @@ const PanelOptimizer = () => {
                     minRotatedRect={rooftop?.minRotatedRect || null}
                     canvasHeight={isWideViewport ? 'h-[640px] lg:h-[720px] xl:h-[780px]' : 'h-[540px] lg:h-[620px]'}
                     className="w-full"
+                    onSelectJob={(newJob) => setModel3dJob(newJob)}
                   />
                 )}
               </div>

@@ -570,7 +570,72 @@ export default function Model3DCanvas({
   canvasHeight = 'h-[520px]',
   className = '',
   initialSolidMode = false,
+  onSelectJob = null,
 }) {
+  // Job Overrides & Model History Switcher
+  const [selectedJobOverride, setSelectedJobOverride] = useState(null);
+  const activeJob = selectedJobOverride || job;
+  const [availableJobs, setAvailableJobs] = useState([]);
+
+  useEffect(() => {
+    const list = [];
+    try {
+      const history = JSON.parse(localStorage.getItem('solarscope.model3dHistory') || '[]');
+      if (Array.isArray(history)) list.push(...history);
+    } catch {}
+    try {
+      const single = JSON.parse(localStorage.getItem('solarscope.model3dJob') || 'null');
+      if (single) list.push(single);
+    } catch {}
+
+    // Known verified successful jobs
+    list.push({
+      id: 16,
+      status: 'SUCCEEDED',
+      modelUrl: 'https://assets.meshy.ai/ca2f0e4c-8ffb-41fb-b2ef-018f718549e4/tasks/01a1b63c-b25e-766b-bd9b-366dc4ce59c9/output/model.glb',
+      consumedCredits: 30,
+      label: 'Job #16 (Building Rooftop)',
+    });
+    list.push({
+      id: 17,
+      status: 'SUCCEEDED',
+      modelUrl: 'https://assets.meshy.ai/ca2f0e4c-8ffb-41fb-b2ef-018f718549e4/tasks/01a1b66c-251c-7311-b80d-23be92b4f22c/output/model.glb',
+      consumedCredits: 30,
+      label: 'Job #17 (Warrior / Figure)',
+    });
+
+    const uniqueMap = new Map();
+    list.forEach((j) => {
+      if (j?.id && (j.status === 'SUCCEEDED' || j.modelUrl)) {
+        uniqueMap.set(Number(j.id), j);
+      }
+    });
+
+    setAvailableJobs(Array.from(uniqueMap.values()).sort((a, b) => b.id - a.id));
+
+    model3dService.listUserJobs().then((jobs) => {
+      if (Array.isArray(jobs) && jobs.length > 0) {
+        jobs.forEach((j) => {
+          if (j?.id && j.status === 'SUCCEEDED') uniqueMap.set(Number(j.id), j);
+        });
+        setAvailableJobs(Array.from(uniqueMap.values()).sort((a, b) => b.id - a.id));
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSwitchJob = (chosenJob) => {
+    setSelectedJobOverride(chosenJob);
+    localStorage.setItem('solarscope.model3dJob', JSON.stringify(chosenJob));
+    try {
+      const stored = JSON.parse(localStorage.getItem('solarscope.rooftop') || '{}');
+      if (stored) {
+        stored.model3dJob = chosenJob;
+        localStorage.setItem('solarscope.rooftop', JSON.stringify(stored));
+      }
+    } catch {}
+    if (onSelectJob) onSelectJob(chosenJob);
+  };
+
   // Layer Toggles (Default to showing ONLY the generated 3D model without solar plates below)
   const [showAiModel, setShowAiModel] = useState(true);
   const [showMeasuredBoundary, setShowMeasuredBoundary] = useState(false);
@@ -806,13 +871,13 @@ export default function Model3DCanvas({
         metadata: dsmMetadata,
       };
     }
-    if (modelStatus === 'ready' && job?.status === 'SUCCEEDED') {
+    if (modelStatus === 'ready' && activeJob?.status === 'SUCCEEDED') {
       return {
         source: 'Meshy AI',
         sampleHeight: () => buildingHeight,
         metadata: {
-          jobId: job.id,
-          credits: job.consumedCredits || 30,
+          jobId: activeJob.id,
+          credits: activeJob.consumedCredits || 30,
           meshSizeMb,
         },
       };
@@ -822,7 +887,7 @@ export default function Model3DCanvas({
       sampleHeight: () => buildingHeight,
       metadata: { height: buildingHeight },
     };
-  }, [dsmStatus, dsmData, dsmMetadata, modelStatus, job, buildingHeight, meshSizeMb]);
+  }, [dsmStatus, dsmData, dsmMetadata, modelStatus, activeJob, buildingHeight, meshSizeMb]);
 
   // Active geometry source badge resolution
   const activeGeometrySource = useMemo(() => {
@@ -836,15 +901,15 @@ export default function Model3DCanvas({
         metaText: `Quality: ${dsmMetadata.imageryQuality} | Pixel: ${dsmMetadata.pixelSizeMeters}m | Valid: ${dsmMetadata.validPixelPercent}%`,
       };
     }
-    if (job?.status === 'SUCCEEDED' || modelStatus === 'ready') {
-      const isMeshy = job?.consumedCredits > 0 || job?.meshyTaskId || (job?.modelUrl && job.modelUrl.includes('meshy'));
+    if (activeJob?.status === 'SUCCEEDED' || modelStatus === 'ready') {
+      const isMeshy = activeJob?.consumedCredits > 0 || activeJob?.meshyTaskId || (activeJob?.modelUrl && activeJob.modelUrl.includes('meshy'));
       if (isMeshy) {
         return {
           name: 'Meshy AI',
           badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
           dotClass: 'bg-emerald-400',
-          jobId: job?.id,
-          credits: job?.consumedCredits || 30,
+          jobId: activeJob?.id,
+          credits: activeJob?.consumedCredits || 30,
           metaText: meshSizeMb ? `${meshSizeMb} MB` : null,
         };
       }
@@ -852,19 +917,19 @@ export default function Model3DCanvas({
         name: 'Mock',
         badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
         dotClass: 'bg-amber-400',
-        jobId: job?.id,
+        jobId: activeJob?.id,
         credits: 0,
         metaText: null,
       };
     }
-    if (job?.status === 'IN_PROGRESS' || job?.status === 'PENDING') {
+    if (activeJob?.status === 'IN_PROGRESS' || activeJob?.status === 'PENDING') {
       return {
         name: 'Meshy AI (Generating)',
         badgeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
         dotClass: 'bg-blue-400 animate-ping',
-        jobId: job?.id,
-        credits: job?.consumedCredits || 0,
-        metaText: `${job.progress || 10}%`,
+        jobId: activeJob?.id,
+        credits: activeJob?.consumedCredits || 0,
+        metaText: `${activeJob.progress || 10}%`,
       };
     }
     return {
@@ -875,7 +940,7 @@ export default function Model3DCanvas({
       credits: 0,
       metaText: dsmStatus === 'uncovered' ? 'Solar DSM Uncovered (Fallback)' : `Height: ${buildingHeight}m`,
     };
-  }, [dsmStatus, dsmMetadata, job, modelStatus, meshSizeMb, buildingHeight]);
+  }, [dsmStatus, dsmMetadata, activeJob, modelStatus, meshSizeMb, buildingHeight]);
 
   // Robust Authenticated GLB Download & Persistent Blob Caching
   const loadGlbModel = useCallback(async (jobToLoad) => {
@@ -953,19 +1018,19 @@ export default function Model3DCanvas({
   useEffect(() => {
     let active = true;
 
-    if (job?.status === 'SUCCEEDED') {
-      loadGlbModel(job).then((url) => {
+    if (activeJob?.status === 'SUCCEEDED') {
+      loadGlbModel(activeJob).then((url) => {
         if (active && url) {
           setModelGlbUrl(url);
           setModelStatus('ready');
         }
       });
-    } else if (job?.status === 'IN_PROGRESS' || job?.status === 'PENDING') {
+    } else if (activeJob?.status === 'IN_PROGRESS' || activeJob?.status === 'PENDING') {
       setModelStatus('generating');
       setModelGlbUrl(null);
-    } else if (job?.status === 'FAILED') {
+    } else if (activeJob?.status === 'FAILED') {
       setModelStatus('error');
-      setModelError(job.errorMessage || 'Meshy 3D generation failed on backend.');
+      setModelError(activeJob.errorMessage || 'Meshy 3D generation failed on backend.');
       setModelGlbUrl(null);
     } else {
       setModelStatus('idle');
@@ -976,7 +1041,7 @@ export default function Model3DCanvas({
       active = false;
       // Preserve cached blob URLs so tab/mode switches do not cause blank renders
     };
-  }, [job, loadGlbModel]);
+  }, [activeJob, loadGlbModel]);
 
   // Convert polygon vertices to local metric coordinates
   const localVertices = useMemo(() => {
@@ -1183,10 +1248,31 @@ export default function Model3DCanvas({
           <div className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-md shadow-xl text-xs font-semibold ${activeGeometrySource.badgeClass}`}>
             <span className={`w-2 h-2 rounded-full ${activeGeometrySource.dotClass}`} />
             <span>Source: <strong>{activeGeometrySource.name}</strong></span>
-            {activeGeometrySource.jobId && (
-              <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
-                Job #{activeGeometrySource.jobId}
-              </span>
+            {availableJobs.length > 1 ? (
+              <div className="flex items-center gap-1 bg-black/40 px-1.5 py-0.5 rounded">
+                <span className="text-3xs text-slate-400 font-mono">Model:</span>
+                <select
+                  value={activeJob?.id || ''}
+                  onChange={(e) => {
+                    const chosen = availableJobs.find((j) => j.id === Number(e.target.value));
+                    if (chosen) handleSwitchJob(chosen);
+                  }}
+                  className="bg-transparent text-emerald-300 font-mono text-2xs cursor-pointer focus:outline-none"
+                  title="Switch between your saved 3D models (0 credits)"
+                >
+                  {availableJobs.map((j) => (
+                    <option key={j.id} value={j.id} className="bg-slate-900 text-white">
+                      Job #{j.id} {j.id === 16 ? '(Building Rooftop)' : (j.id === 17 ? '(Warrior / Figure)' : '')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              activeGeometrySource.jobId && (
+                <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
+                  Job #{activeGeometrySource.jobId}
+                </span>
+              )
             )}
             {activeGeometrySource.credits > 0 && (
               <span className="opacity-90 text-2xs bg-black/40 px-1.5 py-0.5 rounded font-mono">
@@ -1199,6 +1285,23 @@ export default function Model3DCanvas({
               </span>
             )}
           </div>
+
+          {/* Quick 1-click Switch Notice when on character hallucination Job #17 */}
+          {activeJob?.id === 17 && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-amber-950/95 border border-amber-600/80 text-amber-200 text-2xs shadow-xl backdrop-blur-md">
+              <span className="leading-tight">AI generated a character? Switch back to real rooftop:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const job16 = availableJobs.find((j) => j.id === 16);
+                  if (job16) handleSwitchJob(job16);
+                }}
+                className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-bold cursor-pointer transition shrink-0 shadow-sm"
+              >
+                Switch to Job #16 (Building)
+              </button>
+            </div>
+          )}
 
           {dsmStatus === 'loading' && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-950/80 border border-blue-800 text-blue-300 text-2xs backdrop-blur-md">
