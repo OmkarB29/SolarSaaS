@@ -40,6 +40,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                path.startsWith("/h2-console/") || 
                path.startsWith("/api/model3d/preview-capture") ||
                path.matches("/api/model3d/jobs/[^/]+/model") ||
+               path.startsWith("/api/solar/data-layers") ||
+               path.startsWith("/api/solar/geotiff") ||
                "OPTIONS".equalsIgnoreCase(method);
     }
 

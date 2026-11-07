@@ -183,4 +183,24 @@ class SolarControllerIntegrationTest {
 
         return objectMapper.readTree(loginResponse).get("token").asText();
     }
+
+    @Test
+    void testGeoTiffRejectsNonGoogleDomain() throws Exception {
+        mockMvc.perform(get("/api/solar/geotiff")
+                        .param("url", "https://malicious-domain.com/evil.tif"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testDataLayersEndpointHandlesCoverageOrKeyAbsenceGracefully() throws Exception {
+        // In test profile, Google Solar key is empty or location is unmapped, so it returns either 400 or 404
+        mockMvc.perform(get("/api/solar/data-layers")
+                        .param("latitude", "18.5204")
+                        .param("longitude", "73.8567")
+                        .param("radiusMeters", "45.0"))
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    assertThat(status).isIn(400, 404);
+                });
+    }
 }

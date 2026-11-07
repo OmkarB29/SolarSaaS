@@ -96,4 +96,27 @@ public class SolarController {
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
         solarPotentialService.deleteSolarPotential(authentication.getName(), id, isAdmin);
     }
+
+    /**
+     * Proxies Google Solar API Data Layers (DSM, RGB, Mask) with server-managed security.
+     */
+    @GetMapping("/data-layers")
+    public JsonNode getDataLayers(@RequestParam double latitude,
+                                  @RequestParam double longitude,
+                                  @RequestParam(defaultValue = "50.0") double radiusMeters,
+                                  @RequestParam(required = false) String requiredQuality) {
+        return solarApiService.fetchDataLayers(latitude, longitude, radiusMeters, requiredQuality);
+    }
+
+    /**
+     * Proxies and caches GeoTIFF raster bytes, keeping Google API keys secret from client.
+     */
+    @GetMapping(value = "/geotiff", produces = "image/tiff")
+    public org.springframework.http.ResponseEntity<byte[]> getGeoTiff(@RequestParam String url) {
+        byte[] data = solarApiService.fetchGeoTiffBytes(url);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType("image/tiff"))
+                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+                .body(data);
+    }
 }

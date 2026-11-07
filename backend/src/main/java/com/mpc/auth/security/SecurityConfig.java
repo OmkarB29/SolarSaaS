@@ -36,7 +36,17 @@ public class SecurityConfig {
                 .exceptionHandling(exception -> exception.authenticationEntryPoint((request, response, authException) ->
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/auth/**", "/api/solar/building-insights", "/api/panel-optimizer/optimize", "/api/scene3d/**", "/api/rooftops/**", "/api/model3d/jobs/*/model", "/api/model3d/preview-capture").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/api/solar/building-insights",
+                                "/api/solar/data-layers",
+                                "/api/solar/geotiff",
+                                "/api/panel-optimizer/optimize",
+                                "/api/scene3d/**",
+                                "/api/rooftops/**",
+                                "/api/model3d/jobs/*/model",
+                                "/api/model3d/preview-capture"
+                        ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/analysis/**", "/api/reports/**", "/api/financial/**", "/api/proposals/**", "/api/solar/**", "/api/ai/**", "/api/panel-optimizer/**", "/api/model3d/**").authenticated()
                         .requestMatchers("/h2-console/**").permitAll()
