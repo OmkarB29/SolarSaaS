@@ -1,6 +1,9 @@
-import React, { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, Suspense, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Center } from '@react-three/drei';
+import { OrbitControls, useGLTF } from '@react-three/drei';
+
+// Persistent in-memory GLB blob cache to prevent revoking active models across tab switches
+const glbBlobCache = new Map();
 import * as THREE from 'three';
 import * as turf from '@turf/turf';
 import {
@@ -115,33 +118,48 @@ function GlbMeshModel({
   solidColor = '#cbd5e1',
   wireframe = false,
   onModelReady = null,
+  targetFootprintDim = 28.0,
 }) {
   const { scene } = useGLTF(url);
 
-  // Auto-normalize raw GLTF dimensions to fill the viewing screen prominently
-  const { autoFitScale, rawHeight } = useMemo(() => {
+  // Auto-normalize raw GLTF dimensions to match measured real-world rooftop dimensions
+  const { autoFitScale, rawHeight, rawCenter, rawMinY } = useMemo(() => {
     try {
       const box = new THREE.Box3().setFromObject(scene);
       const size = new THREE.Vector3();
       box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
       const maxDim = Math.max(size.x, size.z);
-      // Meshy GLTF files are unit-normalized (~1.0 to 2.0 units).
-      // Scale to 18.0 units so the model fills ~75% of the screen by default.
-      const baseScale = maxDim > 0.001 ? (18.0 / maxDim) : 1.0;
+      // Scale model so its footprint matches the rooftop target dimension
+      const baseScale = maxDim > 0.001 ? (targetFootprintDim / maxDim) : 1.0;
       return {
         autoFitScale: baseScale,
         rawHeight: size.y * baseScale,
+        rawCenter: center,
+        rawMinY: box.min.y,
       };
     } catch {
-      return { autoFitScale: 15.0, rawHeight: 6.0 };
+      return {
+        autoFitScale: 15.0,
+        rawHeight: 6.0,
+        rawCenter: new THREE.Vector3(0, 0, 0),
+        rawMinY: 0,
+      };
     }
-  }, [scene]);
+  }, [scene, targetFootprintDim]);
 
   const effectiveScale = autoFitScale * scale;
 
   const displayScene = useMemo(() => {
     // Deep clone the scene to allow safe material and edge overrides
     const cloned = scene.clone(true);
+
+    // Cleanly offset the cloned scene so horizontal center is at (0, 0)
+    // and building base rests flat on ground at y = 0
+    if (rawCenter) {
+      cloned.position.set(-rawCenter.x, -rawMinY, -rawCenter.z);
+    }
 
     cloned.traverse((child) => {
       if (child.isMesh) {
@@ -187,7 +205,7 @@ function GlbMeshModel({
     });
 
     return cloned;
-  }, [scene, solidMode, showEdges, solidColor, wireframe]);
+  }, [scene, solidMode, showEdges, solidColor, wireframe, rawCenter, rawMinY]);
 
   const groupRef = useRef();
 
@@ -205,9 +223,7 @@ function GlbMeshModel({
       rotation={[0, (rotationDeg * Math.PI) / 180, 0]}
       scale={[effectiveScale, effectiveScale, effectiveScale]}
     >
-      <Center bottom>
-        <primitive object={displayScene} />
-      </Center>
+      <primitive object={displayScene} />
     </group>
   );
 }
@@ -628,15 +644,18 @@ export default function Model3DCanvas({
     };
   }, [customPanels, effectiveMinRotatedRect?.areaM2, obstacles]);
 
-  // Auto-align default footprint to match minimum rotated rectangle
+  // Target footprint dimension for scaling 3D model to measured real-world rooftop
+  const targetFootprintDim = useMemo(() => {
+    if (effectiveMinRotatedRect?.widthMeters && effectiveMinRotatedRect.widthMeters > 0) {
+      return Math.max(effectiveMinRotatedRect.widthMeters, effectiveMinRotatedRect.heightMeters || effectiveMinRotatedRect.widthMeters);
+    }
+    return 28.0;
+  }, [effectiveMinRotatedRect]);
+
+  // Auto-align default rotation to match minimum rotated rectangle
   useEffect(() => {
-    if (effectiveMinRotatedRect && effectiveMinRotatedRect.widthMeters > 0) {
-      const dominantDimension = Math.max(effectiveMinRotatedRect.widthMeters, effectiveMinRotatedRect.heightMeters);
-      const computedScale = Math.max(0.2, Math.min(10.0, dominantDimension / 50.0));
-      setScaleFactor(parseFloat(computedScale.toFixed(2)));
-      if (effectiveMinRotatedRect.bearingDeg != null) {
-        setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
-      }
+    if (effectiveMinRotatedRect && effectiveMinRotatedRect.bearingDeg != null) {
+      setRotationDeg(Math.round(effectiveMinRotatedRect.bearingDeg));
     }
   }, [effectiveMinRotatedRect]);
 
@@ -769,15 +788,13 @@ export default function Model3DCanvas({
     };
   }, [dsmStatus, dsmMetadata, job, modelStatus, meshSizeMb, buildingHeight]);
 
-  // Robust Authenticated GLB Download & Blob URL Generation
+  // Robust Authenticated GLB Download & Persistent Blob Caching
   const loadGlbModel = useCallback(async (jobToLoad) => {
     if (!jobToLoad || (!jobToLoad.id && !jobToLoad.modelUrl)) return null;
     setModelError(null);
     setModelStatus('downloading');
 
     try {
-      // 1. Prefer backend proxy endpoint /api/model3d/jobs/{id}/model for cloud jobs,
-      // but use direct modelUrl for local models and fallback digital twins.
       const isLocalOrFallback = Boolean(
         jobToLoad.isFallback ||
         (typeof jobToLoad.id === 'string' && (jobToLoad.id.startsWith('local_') || jobToLoad.id.startsWith('demo-') || jobToLoad.id.startsWith('gen-'))) ||
@@ -788,6 +805,15 @@ export default function Model3DCanvas({
         ? (jobToLoad.modelUrl || '/models/industrial_hvac_facility.glb')
         : (jobToLoad.id ? model3dService.getModelUrl(jobToLoad.id) : jobToLoad.modelUrl);
 
+      const jobKey = String(jobToLoad.id || jobToLoad.modelUrl || targetUrl);
+      if (glbBlobCache.has(jobKey)) {
+        const cached = glbBlobCache.get(jobKey);
+        setModelGlbUrl(cached.url);
+        if (cached.sizeMb) setMeshSizeMb(cached.sizeMb);
+        setModelStatus('ready');
+        return cached.url;
+      }
+
       const token = getStoredAuth()?.token;
       console.info(`[Model3DCanvas] Requesting GLB for Job #${jobToLoad.id || 'direct'} from: ${targetUrl}`);
 
@@ -797,19 +823,16 @@ export default function Model3DCanvas({
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.status === 401) {
-          // If token has expired, retry unauthenticated since model endpoint is permitAll()
           console.warn('[Model3DCanvas] Auth 401 on model endpoint, retrying unauthenticated...');
           res = await fetch(targetUrl);
         }
       } catch (corsOrNetErr) {
-        // If fetch with Authorization failed due to preflight or CORS, retry plain fetch
         console.warn('[Model3DCanvas] Fetch with auth failed, retrying plain fetch:', corsOrNetErr);
         res = await fetch(targetUrl);
       }
 
       console.info(`[Model3DCanvas] GLB Response: HTTP ${res.status} ${res.statusText}, Content-Type: ${res.headers.get('content-type')}`);
       if (!res.ok) {
-        // Fallback: If backend fails and direct modelUrl exists, try loading as direct url
         if (jobToLoad.modelUrl && targetUrl !== jobToLoad.modelUrl) {
           console.warn('[Model3DCanvas] Backend model endpoint failed, attempting direct modelUrl fallback...');
           res = await fetch(jobToLoad.modelUrl).catch(() => res);
@@ -820,14 +843,12 @@ export default function Model3DCanvas({
         }
       }
 
-      const cl = res.headers.get('content-length');
-      if (cl) {
-        setMeshSizeMb((parseInt(cl, 10) / (1024 * 1024)).toFixed(1));
-      }
-
       const blob = await res.blob();
-      console.info(`[Model3DCanvas] Downloaded GLB Blob: ${blob.size} bytes (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+      const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
+      setMeshSizeMb(sizeMb);
+      console.info(`[Model3DCanvas] Downloaded GLB Blob: ${blob.size} bytes (${sizeMb} MB)`);
       const blobUrl = URL.createObjectURL(blob);
+      glbBlobCache.set(jobKey, { url: blobUrl, sizeMb });
       setModelGlbUrl(blobUrl);
       setModelStatus('ready');
       return blobUrl;
@@ -842,14 +863,12 @@ export default function Model3DCanvas({
 
   useEffect(() => {
     let active = true;
-    let blobUrlToRevoke = null;
 
     if (job?.status === 'SUCCEEDED') {
       loadGlbModel(job).then((url) => {
         if (active && url) {
-          blobUrlToRevoke = url;
-        } else if (url) {
-          URL.revokeObjectURL(url);
+          setModelGlbUrl(url);
+          setModelStatus('ready');
         }
       });
     } else if (job?.status === 'IN_PROGRESS' || job?.status === 'PENDING') {
@@ -866,9 +885,7 @@ export default function Model3DCanvas({
 
     return () => {
       active = false;
-      if (blobUrlToRevoke) {
-        URL.revokeObjectURL(blobUrlToRevoke);
-      }
+      // Preserve cached blob URLs so tab/mode switches do not cause blank renders
     };
   }, [job, loadGlbModel]);
 
@@ -956,13 +973,16 @@ export default function Model3DCanvas({
       <div className={`relative w-full ${isFullscreen ? 'flex-1 min-h-[450px]' : canvasHeight} bg-gradient-to-b from-slate-900 to-slate-950`}>
         <CanvasErrorBoundary>
           <Canvas
-            camera={{ position: [0, 15, 24], fov: 42 }}
+            camera={{
+              position: [0, Math.max(18, targetFootprintDim * 0.75), Math.max(25, targetFootprintDim * 1.05)],
+              fov: 44,
+            }}
             shadows
             className="w-full h-full"
           >
             <ambientLight intensity={solidMode ? 0.95 : 0.9} />
             <directionalLight
-              position={[20, 35, 20]}
+              position={[25, 40, 25]}
               intensity={solidMode ? 1.4 : 1.5}
               castShadow
               shadow-mapSize-width={1024}
@@ -970,16 +990,24 @@ export default function Model3DCanvas({
             />
             {/* Soft fill light to illuminate opposite roof pitch facets */}
             <directionalLight
-              position={[-20, 25, -20]}
+              position={[-25, 25, -25]}
               intensity={solidMode ? 0.6 : 0.3}
             />
-            <gridHelper args={[50, 50, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
+            <gridHelper
+              args={[Math.max(100, Math.round(targetFootprintDim * 2.5)), 50, '#334155', '#1e293b']}
+              position={[0, -0.01, 0]}
+            />
 
-            <OrbitControls makeDefault enableDamping dampingFactor={0.05} target={[0, 4, 0]} />
+            <OrbitControls
+              makeDefault
+              enableDamping
+              dampingFactor={0.05}
+              target={[0, Math.max(2, (modelRoofHeight || 6) * 0.35), 0]}
+            />
 
             {/* Layer 1: AI Generated Model (Protected with SceneErrorBoundary) */}
             {showAiModel && modelGlbUrl && (
-              <SceneErrorBoundary fallback={<group />}>
+              <SceneErrorBoundary>
                 <Suspense fallback={null}>
                   <GlbMeshModel
                     url={modelGlbUrl}
@@ -991,6 +1019,7 @@ export default function Model3DCanvas({
                     solidColor={solidColor}
                     wireframe={wireframe}
                     onModelReady={handleModelReady}
+                    targetFootprintDim={targetFootprintDim}
                   />
                 </Suspense>
               </SceneErrorBoundary>
