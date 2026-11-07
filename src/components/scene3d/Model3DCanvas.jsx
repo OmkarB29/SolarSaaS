@@ -12,7 +12,9 @@ import {
   Sparkles,
   Layers,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Box,
+  Palette
 } from 'lucide-react';
 import { model3dService } from '../../services/model3dService';
 import { fetchSolarDataLayers, fetchGeoTiffArrayBuffer, parseSolarDsm } from '../../utils/solarDsmParser';
@@ -100,9 +102,68 @@ class CanvasErrorBoundary extends React.Component {
  * Loads and renders the GLB Model with user adjustment controls
  * Aligns roof surface to buildingHeight + elevation
  */
-function GlbMeshModel({ url, scale, rotationDeg, elevation, buildingHeight = 3.5 }) {
+function GlbMeshModel({
+  url,
+  scale,
+  rotationDeg,
+  elevation,
+  buildingHeight = 3.5,
+  solidMode = false,
+  showEdges = true,
+  solidColor = '#cbd5e1',
+  wireframe = false,
+}) {
   const { scene } = useGLTF(url);
-  const clonedScene = useMemo(() => scene.clone(), [scene]);
+
+  const displayScene = useMemo(() => {
+    // Deep clone the scene to allow safe material and edge overrides
+    const cloned = scene.clone(true);
+
+    cloned.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        if (solidMode) {
+          // Clean solid CAD material: high contrast, smooth curvature, no noisy photo artifacts
+          child.material = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(solidColor),
+            roughness: 0.38,
+            metalness: 0.08,
+            flatShading: false,
+            side: THREE.DoubleSide,
+            wireframe: wireframe,
+          });
+
+          if (child.geometry && !child.geometry.attributes.normal) {
+            child.geometry.computeVertexNormals();
+          }
+
+          // Crisp architectural edge outlines for ridges, eaves, hips, and wall corners
+          if (showEdges && !wireframe && child.geometry) {
+            try {
+              // 24 degree threshold for real architectural edges without triangle noise
+              const edgesGeo = new THREE.EdgesGeometry(child.geometry, 24);
+              const edgeLine = new THREE.LineSegments(
+                edgesGeo,
+                new THREE.LineBasicMaterial({
+                  color: 0x334155, // slate-700
+                  transparent: true,
+                  opacity: 0.85,
+                  depthTest: true,
+                })
+              );
+              child.add(edgeLine);
+            } catch {
+              // Ignore edge creation on unsupported custom buffer geometries
+            }
+          }
+        }
+      }
+    });
+
+    return cloned;
+  }, [scene, solidMode, showEdges, solidColor, wireframe]);
 
   return (
     <group
@@ -111,7 +172,7 @@ function GlbMeshModel({ url, scale, rotationDeg, elevation, buildingHeight = 3.5
       scale={[scale, scale, scale]}
     >
       <Center top>
-        <primitive object={clonedScene} />
+        <primitive object={displayScene} />
       </Center>
     </group>
   );
@@ -120,7 +181,7 @@ function GlbMeshModel({ url, scale, rotationDeg, elevation, buildingHeight = 3.5
 /**
  * Measured Rooftop Geometry & Extrusion Layer
  */
-function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5, elevation = 0 }) {
+function MeasuredRooftopLayer({ localVertices, obstaclesLocal, buildingHeight = 3.5, elevation = 0, solidMode = false }) {
   // Construct 2D Three.Shape for the roof boundary
   const shape = useMemo(() => {
     if (localVertices.length < 3) return null;
@@ -367,12 +428,19 @@ export default function Model3DCanvas({
   customPanels = null,
   buildingHeight = 3.5,
   canvasHeight = 'h-[520px]',
-  className = ''
+  className = '',
+  initialSolidMode = false,
 }) {
   // Layer Toggles
   const [showAiModel, setShowAiModel] = useState(true);
   const [showMeasuredBoundary, setShowMeasuredBoundary] = useState(true);
   const [showPanelLayout, setShowPanelLayout] = useState(true);
+
+  // Solid Mode & Shading Controls
+  const [solidMode, setSolidMode] = useState(initialSolidMode);
+  const [showEdges, setShowEdges] = useState(true);
+  const [solidColor, setSolidColor] = useState('#cbd5e1'); // '#cbd5e1' (CAD Slate), '#f8fafc' (Pure White), '#94a3b8' (Stone Clay)
+  const [wireframe, setWireframe] = useState(false);
 
   // Alignment Controls
   const [rotationDeg, setRotationDeg] = useState(0);
@@ -719,7 +787,7 @@ export default function Model3DCanvas({
           : `flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl ${className}`
       }
     >
-      {/* ─── MANDATORY AI DISCLAIMER BANNER & FULLSCREEN TOGGLE ─── */}
+      {/* ─── MANDATORY AI DISCLAIMER BANNER & SOLID MODE / FULLSCREEN CONTROLS ─── */}
       <div className="bg-blue-950/80 border-b border-blue-800/80 px-3.5 py-2 flex items-center justify-between gap-2 text-2xs text-blue-200">
         <div className="flex items-start gap-2">
           <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
@@ -727,15 +795,32 @@ export default function Model3DCanvas({
             <strong>AI-generated visual model.</strong> Panel counts and layout placement come strictly from measured roof geometry.
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-600/60 hover:bg-indigo-600 border border-indigo-400/50 text-white font-semibold transition cursor-pointer shrink-0 ml-2"
-          title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen View'}
-        >
-          {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-          <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {/* Solid Mode Quick Toggle */}
+          <button
+            type="button"
+            onClick={() => setSolidMode(!solidMode)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-2xs font-semibold transition cursor-pointer ${
+              solidMode
+                ? 'bg-indigo-600 text-white border-indigo-400/80 shadow-sm ring-1 ring-indigo-400'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700/80'
+            }`}
+            title={solidMode ? 'Switch to textured satellite mode' : 'Switch to Solid CAD Mode for clearer, high-contrast rooftop geometry'}
+          >
+            <Box size={13} className={solidMode ? 'text-indigo-200' : 'text-slate-400'} />
+            <span>{solidMode ? 'Solid Mode (On)' : 'Solid Mode'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-600/60 hover:bg-indigo-600 border border-indigo-400/50 text-white font-semibold transition cursor-pointer"
+            title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen View'}
+          >
+            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+          </button>
+        </div>
       </div>
 
       {/* ─── 3D VIEWPORT CANVAS ─── */}
@@ -746,13 +831,18 @@ export default function Model3DCanvas({
             shadows
             className="w-full h-full"
           >
-            <ambientLight intensity={0.9} />
+            <ambientLight intensity={solidMode ? 0.95 : 0.9} />
             <directionalLight
               position={[25, 45, 25]}
-              intensity={1.5}
+              intensity={solidMode ? 1.4 : 1.5}
               castShadow
               shadow-mapSize-width={1024}
               shadow-mapSize-height={1024}
+            />
+            {/* Soft fill light to illuminate opposite roof pitch facets */}
+            <directionalLight
+              position={[-25, 30, -25]}
+              intensity={solidMode ? 0.6 : 0.3}
             />
             <gridHelper args={[100, 100, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
 
@@ -768,6 +858,10 @@ export default function Model3DCanvas({
                     rotationDeg={rotationDeg}
                     elevation={elevation}
                     buildingHeight={buildingHeight}
+                    solidMode={solidMode}
+                    showEdges={showEdges}
+                    solidColor={solidColor}
+                    wireframe={wireframe}
                   />
                 </Suspense>
               </SceneErrorBoundary>
@@ -780,6 +874,7 @@ export default function Model3DCanvas({
                 obstaclesLocal={obstaclesLocal}
                 buildingHeight={buildingHeight}
                 elevation={elevation}
+                solidMode={solidMode}
               />
             )}
 
@@ -866,49 +961,150 @@ export default function Model3DCanvas({
           </div>
         )}
 
-        {/* Layer Toggles Floating HUD */}
-        <div className="absolute top-3 right-3 flex flex-col gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-2 rounded-xl text-2xs shadow-xl">
-          <span className="text-slate-400 font-semibold px-1">Layers</span>
-          <button
-            type="button"
-            onClick={() => setShowAiModel((p) => !p)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
-              showAiModel ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {showAiModel ? <Eye size={12} /> : <EyeOff size={12} />}
-            <span>Realistic Model (AI)</span>
-          </button>
+        {/* Layer & Shading Controls Floating HUD */}
+        <div className="absolute top-3 right-3 flex flex-col gap-2 bg-slate-900/95 backdrop-blur-md border border-slate-800 p-2.5 rounded-xl text-2xs shadow-xl w-48">
+          <div className="flex flex-col gap-1">
+            <span className="text-slate-400 font-semibold px-1">Layers</span>
+            <button
+              type="button"
+              onClick={() => setShowAiModel((p) => !p)}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
+                showAiModel ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {showAiModel ? <Eye size={12} /> : <EyeOff size={12} />}
+              <span>3D Rooftop Mesh</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setShowMeasuredBoundary((p) => !p)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
-              showMeasuredBoundary ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {showMeasuredBoundary ? <Eye size={12} /> : <EyeOff size={12} />}
-            <span>Roof Boundary (Measured)</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowMeasuredBoundary((p) => !p)}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
+                showMeasuredBoundary ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {showMeasuredBoundary ? <Eye size={12} /> : <EyeOff size={12} />}
+              <span>Roof Perimeter (CAD)</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setShowPanelLayout((p) => !p)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
-              showPanelLayout ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {showPanelLayout ? <Eye size={12} /> : <EyeOff size={12} />}
-            <span>Panel Layout (Measured)</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowPanelLayout((p) => !p)}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded transition cursor-pointer ${
+                showPanelLayout ? 'bg-blue-600/30 text-blue-300 font-semibold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {showPanelLayout ? <Eye size={12} /> : <EyeOff size={12} />}
+              <span>Panel Layout</span>
+            </button>
+          </div>
+
+          {/* Shading Style: Textured vs Solid CAD */}
+          <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+            <span className="text-slate-400 font-semibold px-1 flex items-center justify-between">
+              <span>Shading Mode</span>
+              {solidMode && <span className="text-[10px] text-indigo-400 font-bold">Clear Solid</span>}
+            </span>
+            <div className="grid grid-cols-2 gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSolidMode(false)}
+                className={`flex items-center justify-center gap-1 py-1 rounded text-2xs font-semibold transition cursor-pointer ${
+                  !solidMode
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Render with realistic satellite texture map"
+              >
+                <Palette size={11} />
+                <span>Textured</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSolidMode(true)}
+                className={`flex items-center justify-center gap-1 py-1 rounded text-2xs font-semibold transition cursor-pointer ${
+                  solidMode
+                    ? 'bg-indigo-600 text-white shadow font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Solid CAD mode for high-contrast, crystal-clear rooftop geometry"
+              >
+                <Box size={11} />
+                <span>Solid CAD</span>
+              </button>
+            </div>
+
+            {solidMode && (
+              <div className="flex flex-col gap-1.5 pt-1.5 border-t border-slate-800/60 bg-slate-950/60 p-1.5 rounded-lg">
+                <label className="flex items-center justify-between text-slate-300 cursor-pointer">
+                  <span>Edge Lines</span>
+                  <input
+                    type="checkbox"
+                    checked={showEdges}
+                    onChange={(e) => setShowEdges(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 h-3 w-3 cursor-pointer"
+                  />
+                </label>
+                <label className="flex items-center justify-between text-slate-300 cursor-pointer">
+                  <span>Wireframe</span>
+                  <input
+                    type="checkbox"
+                    checked={wireframe}
+                    onChange={(e) => setWireframe(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 h-3 w-3 cursor-pointer"
+                  />
+                </label>
+                <div className="flex items-center justify-between pt-0.5">
+                  <span className="text-slate-400">Tone:</span>
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { label: 'Slate', color: '#cbd5e1' },
+                      { label: 'White', color: '#f8fafc' },
+                      { label: 'Clay', color: '#94a3b8' },
+                    ].map((c) => (
+                      <button
+                        key={c.color}
+                        type="button"
+                        onClick={() => setSolidColor(c.color)}
+                        className={`w-3.5 h-3.5 rounded-full border transition cursor-pointer ${
+                          solidColor === c.color ? 'ring-2 ring-indigo-400 scale-110' : 'border-slate-600 opacity-70 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: c.color }}
+                        title={`${c.label} solid tone`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* ─── FINE-TUNING ALIGNMENT CONTROLS ─── */}
       <div className="p-3 bg-slate-900 border-t border-slate-800 text-2xs space-y-2">
-        <span className="text-slate-400 font-semibold uppercase tracking-wider block">
-          Visual Alignment Tuning
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400 font-semibold uppercase tracking-wider block">
+            Visual Alignment Tuning
+          </span>
+          <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
+            <span className="text-slate-400">Render:</span>
+            <button
+              type="button"
+              onClick={() => setSolidMode(false)}
+              className={`px-1.5 py-0.5 rounded cursor-pointer transition ${!solidMode ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
+            >
+              Textured
+            </button>
+            <button
+              type="button"
+              onClick={() => setSolidMode(true)}
+              className={`px-1.5 py-0.5 rounded cursor-pointer transition ${solidMode ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
+            >
+              Solid CAD
+            </button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-3 gap-2">
           {/* Rotation Control */}
